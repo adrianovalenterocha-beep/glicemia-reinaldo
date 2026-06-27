@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glicemia - Reinaldo</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.6.0/jspdf.plugin.autotable.min.js"></script>
+<style>
+  :root {
+    --azul: #1a6fbe;
+    --azul-claro: #e8f2fb;
+    --verde: #28a745;
+    --verde-claro: #e8f8ed;
+    --vermelho: #dc3545;
+    --amarelo: #ffc107;
+    --laranja: #fd7e14;
+    --cinza: #6c757d;
+    --fundo: #f0f4f8;
+    --borda: #cdd8e3;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: var(--fundo); color: #111; font-size: 19px; }
+
+  /* HEADER */
+  header {
+    background: linear-gradient(135deg, #1a6fbe, #0d4f8f);
+    color: white;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  }
+  header h1 { font-size: 1.25rem; }
+  header span { font-size: 0.9rem; opacity: 0.9; }
+
+  /* NAV */
+  nav {
+    background: white;
+    display: flex;
+    border-bottom: 3px solid var(--borda);
+    overflow-x: auto;
+    position: sticky;
+    top: 58px;
+    z-index: 99;
+  }
+  nav button {
+    flex: 1; min-width: 70px;
+    padding: 16px 6px;
+    border: none; background: none;
+    font-size: 0.95rem; color: #555;
+    cursor: pointer;
+    border-bottom: 4px solid transparent;
+    transition: all 0.2s; white-space: nowrap;
+    font-weight: 600;
+  }
+  nav button.ativo { color: var(--azul); border-bottom-color: var(--azul); font-weight: bold; }
+
+  /* PÁGINAS */
+  .pagina { display: none; padding: 16px; max-width: 800px; margin: 0 auto; }
+  .pagina.ativa { display: block; }
+
+  /* CARD */
+  .card {
+    background: white; border-radius: 16px;
+    padding: 22px; margin-bottom: 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  .card-titulo { font-size: 1.15rem; color: var(--azul); margin-bottom: 16px; border-bottom: 2px solid var(--borda); padding-bottom: 10px; font-weight: bold; }
+
+  /* SAUDAÇÃO */
+  .saudacao {
+    background: linear-gradient(150deg, #1a6fbe 0%, #0a3d7a 100%);
+    color: white; border-radius: 20px;
+    padding: 28px 20px 24px; margin-bottom: 18px;
+    box-shadow: 0 4px 16px rgba(26,111,190,0.4);
+    text-align: center;
+  }
+  .saudacao .emoji { font-size: 3rem; display: block; margin-bottom: 10px; line-height: 1; }
+  .saudacao h2 { font-size: 1.6rem; margin-bottom: 6px; font-weight: bold; letter-spacing: 0.01em; }
+  .saudacao p { font-size: 0.97rem; opacity: 0.9; line-height: 1.6; margin-bottom: 14px; }
+  .saudacao .data-pill {
+    display: inline-block; background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 20px; padding: 6px 18px;
+    font-size: 0.95rem; font-weight: bold; margin-bottom: 12px;
+  }
+  .status-dia {
+    display: inline-flex; align-items: center; gap: 7px;
+    border-radius: 30px; padding: 8px 20px;
+    font-size: 0.95rem; font-weight: bold; margin-top: 2px;
+  }
+  .status-dia.ok      { background: rgba(40,167,69,0.3);  border: 1.5px solid rgba(40,167,69,0.6); }
+  .status-dia.pendente{ background: rgba(255,193,7,0.25); border: 1.5px solid rgba(255,193,7,0.5); }
+
+  /* MEDIDORES DO DIA */
+  .medicoes-dia {
+    display: flex; justify-content: center;
+    gap: 8px; flex-wrap: wrap; margin-top: 16px;
+  }
+  .medicao-chip {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 14px; padding: 10px 10px 8px;
+    min-width: 56px; flex: 1; max-width: 72px;
+    border: 2px solid rgba(255,255,255,0.15);
+    transition: background 0.2s;
+  }
+  .medicao-chip.feito {
+    background: rgba(40,167,69,0.3);
+    border-color: rgba(40,167,69,0.7);
+  }
+  .medicao-chip.pendente {
+    background: rgba(255,255,255,0.07);
+    border-color: rgba(255,255,255,0.2);
+  }
+  .medicao-chip .mc-emoji { font-size: 1.3rem; line-height: 1; }
+  .medicao-chip .mc-label {
+    font-size: 0.65rem; font-weight: bold; opacity: 0.85;
+    text-align: center; line-height: 1.2; white-space: nowrap;
+  }
+  .medicao-chip .mc-dot {
+    width: 12px; height: 12px; border-radius: 50%; margin-top: 2px;
+  }
+  .medicao-chip.feito   .mc-dot { background: #4ddb80; box-shadow: 0 0 6px rgba(77,219,128,0.7); }
+  .medicao-chip.pendente .mc-dot { background: rgba(255,255,255,0.3); }
+
+  /* SEÇÃO DO FORMULÁRIO */
+  .secao {
+    border-radius: 14px; padding: 20px; margin-bottom: 16px;
+    border-left: 6px solid transparent;
+  }
+  .secao-jejum      { background: #fff8e8; border-left-color: #f59e0b; }
+  .secao-almoco     { background: #e8f8ed; border-left-color: #28a745; }
+  .secao-pos-almoco { background: #e8f0fb; border-left-color: #6366f1; }
+  .secao-jantar     { background: #f3e8ff; border-left-color: #8b5cf6; }
+  .secao-pos-jantar { background: #fce8ec; border-left-color: #dc3545; }
+  .secao-insulina   { background: #e8f8fd; border-left-color: #0891b2; }
+
+  .secao-cabecalho { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+  .secao-emoji { font-size: 2rem; flex-shrink: 0; margin-top: 2px; }
+  .secao-texto h3 { font-size: 1.15rem; font-weight: bold; color: #111; margin-bottom: 4px; }
+  .secao-texto p { font-size: 0.92rem; color: #444; line-height: 1.55; }
+
+  /* CAMPOS */
+  .form-linha { display: flex; gap: 14px; flex-wrap: wrap; }
+  .form-campo { flex: 1; min-width: 140px; }
+  .campo-cabecalho { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .campo-cabecalho label { font-size: 0.95rem; color: #333; font-weight: bold; }
+  .btn-info {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--azul); color: white;
+    border: none; font-size: 0.8rem; font-weight: bold;
+    cursor: pointer; flex-shrink: 0; line-height: 26px; text-align: center;
+    padding: 0; box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  }
+  .form-campo input {
+    width: 100%; padding: 18px 12px;
+    font-size: 1.8rem; font-weight: bold;
+    border: 3px solid var(--borda); border-radius: 12px;
+    text-align: center; background: white;
+    transition: border-color 0.2s;
+    color: #111;
+  }
+  .form-campo input:focus { border-color: var(--azul); outline: none; box-shadow: 0 0 0 4px rgba(26,111,190,0.15); }
+  .campo-hint { font-size: 0.82rem; color: #666; margin-top: 6px; text-align: center; font-weight: 600; }
+
+  /* OBSERVAÇÕES */
+  .campo-obs textarea {
+    width: 100%; padding: 14px;
+    font-size: 1.05rem; font-family: Arial, sans-serif;
+    border: 3px solid var(--borda); border-radius: 12px;
+    resize: vertical; min-height: 100px; background: white;
+    transition: border-color 0.2s; color: #111; line-height: 1.6;
+  }
+  .campo-obs textarea:focus { border-color: var(--azul); outline: none; box-shadow: 0 0 0 4px rgba(26,111,190,0.15); }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55); z-index: 1000;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.aberto { display: flex; }
+  .modal {
+    background: white; border-radius: 18px;
+    padding: 28px 24px; max-width: 420px; width: 100%;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+    position: relative;
+  }
+  .modal-emoji { font-size: 2.4rem; display: block; margin-bottom: 10px; }
+  .modal h3 { font-size: 1.2rem; color: var(--azul); margin-bottom: 12px; font-weight: bold; }
+  .modal p { font-size: 1rem; line-height: 1.7; color: #333; margin-bottom: 10px; }
+  .modal ul { font-size: 0.97rem; line-height: 1.85; color: #333; padding-left: 20px; margin-bottom: 12px; }
+  .modal-fechar {
+    position: absolute; top: 14px; right: 16px;
+    background: #eee; border: none; font-size: 1.2rem;
+    cursor: pointer; color: #555; border-radius: 50%;
+    width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  }
+  .modal-fechar:hover { background: #ddd; }
+  .tag-normal { display: inline-block; background: #e8f8ed; color: var(--verde); border-radius: 20px; padding: 3px 12px; font-size: 0.9rem; font-weight: bold; }
+  .tag-atencao { display: inline-block; background: #fff3cd; color: #856404; border-radius: 20px; padding: 3px 12px; font-size: 0.9rem; font-weight: bold; }
+
+  /* BOTÕES */
+  .btn {
+    display: block; padding: 18px 22px;
+    font-size: 1.15rem; border: none; border-radius: 12px;
+    cursor: pointer; font-weight: bold; transition: all 0.2s;
+    text-align: center; width: 100%; margin-bottom: 10px;
+    letter-spacing: 0.02em;
+  }
+  .btn:hover { opacity: 0.88; transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); opacity: 0.75; }
+  .btn-azul { background: var(--azul); color: white; }
+  .btn-verde { background: var(--verde); color: white; }
+  .btn-cinza { background: var(--cinza); color: white; }
+  .btn-vermelho { background: var(--vermelho); color: white; }
+  .btn-amarelo { background: var(--amarelo); color: #222; }
+  .btn-sm { padding: 10px 16px; font-size: 0.9rem; width: auto; display: inline-block; margin-bottom: 0; }
+
+  /* AVISO */
+  .aviso-box {
+    background: #fff3cd; border: 2px solid #ffc107;
+    border-radius: 12px; padding: 14px 16px;
+    font-size: 1rem; margin-bottom: 14px; display: none; line-height: 1.5;
+  }
+  .aviso-box.mostrar { display: block; }
+  .aviso-sucesso { background: var(--verde-claro); border-color: var(--verde); }
+
+  /* HISTÓRICO */
+  .tabela-wrapper { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  th { background: var(--azul); color: white; padding: 12px 8px; text-align: center; white-space: nowrap; font-size: 0.88rem; }
+  td { padding: 11px 8px; text-align: center; border-bottom: 2px solid var(--borda); white-space: nowrap; font-size: 1rem; }
+  tr:hover td { background: var(--azul-claro); }
+  td.alto { color: var(--vermelho); font-weight: bold; }
+  td.baixo { color: var(--laranja); font-weight: bold; }
+  td.normal { color: var(--verde); font-weight: bold; }
+
+  /* RESUMO */
+  .resumo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .resumo-item { background: var(--azul-claro); border-radius: 12px; padding: 16px 12px; text-align: center; }
+  .resumo-item .valor { font-size: 1.9rem; font-weight: bold; color: var(--azul); }
+  .resumo-item .rotulo { font-size: 0.82rem; color: #444; margin-top: 4px; font-weight: 600; }
+
+  /* DATA */
+  .data-seletor { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .data-seletor input[type="date"] { flex: 1; padding: 14px; border: 3px solid var(--borda); border-radius: 10px; font-size: 1.1rem; }
+  .data-seletor label { font-size: 1rem; color: #333; white-space: nowrap; font-weight: bold; }
+  .semana-seletor { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  .semana-seletor select { flex: 1; padding: 14px; border: 3px solid var(--borda); border-radius: 10px; font-size: 1rem; }
+
+  .badge-data { display: inline-block; background: var(--azul); color: white; border-radius: 20px; padding: 6px 16px; font-size: 0.95rem; margin-bottom: 12px; font-weight: bold; }
+  .vazio { text-align: center; color: var(--cinza); padding: 40px; font-size: 1.05rem; line-height: 1.7; }
+
+  /* TOAST */
+  .toast {
+    position: fixed;
+    top: 70px; left: 50%; transform: translateX(-50%);
+    z-index: 2000;
+    background: #1e7e34; color: white;
+    padding: 13px 22px; border-radius: 30px;
+    font-size: 0.95rem; font-weight: bold;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s;
+    white-space: nowrap;
+    max-width: 90vw;
+  }
+  .toast.erro { background: var(--vermelho); }
+  .toast.visivel { opacity: 1; }
+
+  /* BOTÃO EMERGÊNCIA FLUTUANTE */
+  .btn-emergencia-flutuante {
+    position: fixed;
+    bottom: 24px; right: 16px;
+    z-index: 500;
+    background: var(--vermelho);
+    color: white;
+    border: none;
+    border-radius: 50px;
+    padding: 18px 24px;
+    font-size: 1.15rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 18px rgba(220,53,69,0.55);
+    display: flex; align-items: center; gap: 10px;
+    transition: transform 0.15s, box-shadow 0.15s;
+    animation: pulsar 2.5s infinite;
+  }
+  .btn-emergencia-flutuante:hover {
+    transform: scale(1.06);
+    box-shadow: 0 6px 22px rgba(220,53,69,0.6);
+  }
+  @keyframes pulsar {
+    0%, 100% { box-shadow: 0 4px 16px rgba(220,53,69,0.5); }
+    50% { box-shadow: 0 4px 28px rgba(220,53,69,0.85); }
+  }
+
+  /* MODAL EMERGÊNCIA */
+  .modal-emergencia {
+    background: white; border-radius: 20px;
+    padding: 28px 22px; max-width: 440px; width: 100%;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    position: relative; max-height: 88vh; overflow-y: auto;
+  }
+  .modal-emergencia h2 {
+    font-size: 1.4rem; color: var(--vermelho);
+    text-align: center; margin-bottom: 6px; font-weight: bold;
+  }
+  .modal-emergencia .subtitulo {
+    text-align: center; font-size: 1rem;
+    color: #444; margin-bottom: 20px;
+  }
+  .contato-card {
+    border: 2px solid var(--borda); border-radius: 14px;
+    padding: 16px; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .contato-card .contato-avatar {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: var(--azul-claro); display: flex;
+    align-items: center; justify-content: center;
+    font-size: 1.6rem; flex-shrink: 0;
+  }
+  .contato-card.medico .contato-avatar { background: #fce8ec; }
+  .contato-card .contato-info { flex: 1; min-width: 0; }
+  .contato-card .contato-nome { font-weight: bold; font-size: 1.05rem; margin-bottom: 2px; }
+  .contato-card .contato-tipo { font-size: 0.88rem; color: var(--cinza); margin-bottom: 10px; }
+  .contato-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-acao {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 16px; border-radius: 10px;
+    border: none; font-size: 0.95rem; font-weight: bold;
+    cursor: pointer; text-decoration: none; color: white;
+    transition: opacity 0.2s;
+  }
+  .btn-acao:hover { opacity: 0.85; }
+  .btn-acao.ligar { background: var(--verde); }
+  .btn-acao.whatsapp { background: #25d366; }
+  .btn-acao.email { background: var(--azul); }
+  .sem-contato {
+    text-align: center; padding: 24px;
+    color: #444; font-size: 1rem;
+    background: var(--fundo); border-radius: 12px; line-height: 1.6;
+  }
+  .sem-contato strong { display: block; margin-bottom: 8px; font-size: 1.05rem; }
+  .divisor-emerg {
+    text-align: center; font-size: 0.88rem;
+    color: #aaa; margin: 14px 0;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .divisor-emerg::before, .divisor-emerg::after {
+    content: ''; flex: 1; height: 1px; background: var(--borda);
+  }
+
+  /* CONFIGURAÇÕES */
+  .config-secao { margin-bottom: 24px; }
+  .config-secao h3 {
+    font-size: 1.1rem; color: var(--azul);
+    margin-bottom: 14px; padding-bottom: 8px;
+    border-bottom: 2px solid var(--borda); font-weight: bold;
+  }
+  .config-campo { margin-bottom: 14px; }
+  .config-campo label { display: block; font-size: 0.95rem; color: #333; font-weight: bold; margin-bottom: 6px; }
+  .config-campo input {
+    width: 100%; padding: 14px 14px;
+    font-size: 1.05rem; border: 3px solid var(--borda);
+    border-radius: 10px; background: white; color: #111;
+  }
+  .config-campo input:focus { border-color: var(--azul); outline: none; box-shadow: 0 0 0 3px rgba(26,111,190,0.12); }
+  .contatos-lista { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+  .contato-item-cfg {
+    background: var(--azul-claro); border-radius: 12px;
+    padding: 16px; display: flex; align-items: center;
+    gap: 12px;
+  }
+  .contato-item-cfg .ci-info { flex: 1; }
+  .contato-item-cfg .ci-nome { font-weight: bold; font-size: 1rem; }
+  .contato-item-cfg .ci-detalhe { font-size: 0.88rem; color: #444; margin-top: 2px; }
+  .form-novo-contato {
+    background: #f8f8f8; border-radius: 12px;
+    padding: 18px; border: 2px dashed var(--borda);
+  }
+  .form-novo-contato h4 { font-size: 1rem; color: #444; margin-bottom: 14px; font-weight: bold; }
+  .form-linha-cfg { display: flex; gap: 10px; flex-wrap: wrap; }
+  .form-linha-cfg .config-campo { flex: 1; min-width: 140px; }
+
+  @media print {
+    header, nav, .btn, .semana-seletor, .no-print, .saudacao, .btn-emergencia-flutuante { display: none !important; }
+    .pagina { display: block !important; padding: 0; }
+    .card { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; }
+    body { background: white; }
+  }
+  /* TOAST maior */
+  .toast { font-size: 1.05rem; padding: 15px 26px; }
+
+  @media (max-width: 500px) {
+    body { font-size: 18px; }
+    .form-campo { min-width: 100%; }
+    .resumo-grid { grid-template-columns: repeat(2, 1fr); }
+    .btn-emergencia-flutuante span.texto { display: none; }
+    .btn-emergencia-flutuante { padding: 18px; font-size: 1.3rem; }
+    .form-campo input { font-size: 2rem; padding: 20px 10px; }
+    nav button { font-size: 0.82rem; padding: 14px 4px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>💉 Glicemia — Reinaldo</h1>
+    <span id="data-hoje"></span>
+  </div>
+</header>
+
+<nav>
+  <button class="ativo" onclick="irPara('registrar', this)">📝 Registrar</button>
+  <button onclick="irPara('historico', this)">📋 Histórico</button>
+  <button onclick="irPara('relatorio', this)">📊 Relatório</button>
+  <button onclick="irPara('exportar', this)">💾 Exportar</button>
+  <button onclick="irPara('config', this)">⚙️ Config.</button>
+</nav>
+
+<!-- TOAST GLOBAL -->
+<div class="toast" id="toast-global"></div>
+
+<!-- BOTÃO EMERGÊNCIA FLUTUANTE -->
+<button class="btn-emergencia-flutuante" onclick="abrirEmergencia()">
+  🆘 <span class="texto">Emergência</span>
+</button>
+
+<!-- ===== MODAL EMERGÊNCIA ===== -->
+<div class="modal-overlay" id="modal-emergencia-overlay" onclick="fecharEmergencia(event)">
+  <div class="modal-emergencia">
+    <button class="modal-fechar" onclick="fecharEmergencia()">✕</button>
+    <h2>🆘 Precisa de ajuda?</h2>
+    <p class="subtitulo">Escolha como quer entrar em contato agora.</p>
+    <div id="lista-contatos-emerg"></div>
+    <div class="divisor-emerg">outras opções</div>
+    <a href="tel:192" class="btn-acao ligar" style="width:100%;justify-content:center;padding:12px;font-size:0.95rem;border-radius:10px;margin-bottom:8px">
+      📞 SAMU — 192
+    </a>
+    <a href="tel:193" class="btn-acao" style="background:#e65c00;width:100%;justify-content:center;padding:12px;font-size:0.95rem;border-radius:10px;margin-bottom:8px">
+      🚒 Bombeiros — 193
+    </a>
+    <a href="tel:190" class="btn-acao" style="background:#1a3c6e;width:100%;justify-content:center;padding:12px;font-size:0.95rem;border-radius:10px">
+      🚔 Polícia — 190
+    </a>
+  </div>
+</div>
+
+<!-- ===== MODAL DE AJUDA ===== -->
+<div class="modal-overlay" id="modal-overlay" onclick="fecharModal(event)">
+  <div class="modal">
+    <button class="modal-fechar" onclick="fecharModal()">✕</button>
+    <span class="modal-emoji" id="modal-emoji"></span>
+    <h3 id="modal-titulo"></h3>
+    <div id="modal-corpo"></div>
+  </div>
+</div>
+
+<!-- ===== REGISTRAR ===== -->
+<div class="pagina ativa" id="pg-registrar">
+
+  <div class="saudacao" id="saudacao-bloco">
+    <span class="emoji" id="saudacao-emoji">☀️</span>
+    <h2 id="saudacao-texto">Bom dia, Reinaldo!</h2>
+    <p id="saudacao-sub">Hoje é um novo dia para cuidar da saúde.</p>
+    <div class="data-pill" id="saudacao-data"></div>
+    <div id="saudacao-status"></div>
+    <div class="medicoes-dia" id="medicoes-dia"></div>
+  </div>
+
+  <div class="card">
+    <div class="data-seletor">
+      <label>Data do registro:</label>
+      <input type="date" id="data-registro" onchange="verificarRegistroExistente()">
+    </div>
+    <div id="aviso-existente" class="aviso-box">
+      ⚠️ Já existe um registro para esta data. Você pode revisar e atualizar abaixo.
+    </div>
+  </div>
+
+  <form id="form-registro" onsubmit="salvarRegistro(event)">
+
+    <!-- JEJUM -->
+    <div class="secao secao-jejum">
+      <div class="secao-cabecalho">
+        <span class="secao-emoji">🌅</span>
+        <div class="secao-texto">
+          <h3>Medição em Jejum</h3>
+          <p>Feita logo ao acordar, <strong>antes de comer ou beber</strong> qualquer coisa (exceto água). É a medição mais importante do dia!</p>
+        </div>
+      </div>
+      <div class="form-linha">
+        <div class="form-campo">
+          <div class="campo-cabecalho">
+            <label>Glicemia (mg/dL)</label>
+            <button type="button" class="btn-info" onclick="abrirModal('glicemia')">i</button>
+          </div>
+          <input type="number" id="jejum_glicemia" placeholder="—" min="20" max="600" inputmode="numeric">
+          <div class="campo-hint">Normal em jejum: 70–99</div>
+        </div>
+        <div class="form-campo">
+          <div class="campo-cabecalho">
+            <label>Insulina Rápida (U)</label>
+            <button type="button" class="btn-info" onclick="abrirModal('insulina_rapida')">i</button>
+          </div>
+          <input type="number" id="jejum_insulina" placeholder="—" min="0" max="100" step="0.5" inputmode="decimal">
+          <div class="campo-hint">Unidades aplicadas</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRÉ-ALMOÇO -->
+    <div class="secao secao-almoco">
+      <div class="secao-cabecalho">
+        <span class="secao-emoji">☀️</span>
+        <div class="secao-texto">
+          <h3>Antes do Almoço</h3>
+          <p>Medição feita <strong>antes de almoçar</strong>, idealmente 15–30 minutos antes da refeição.</p>
+        </div>
+      </div>
+      <div class="form-linha">
+        <div class="form-campo">
+          <div class="campo-cabecalho">
+            <label>Glicemia (mg/dL)</label>
+            <button type="button" class="btn-info" onclick="abrirModal('glicemia_pre')">i</button>
+          </div>
+          <input type="number" id="pre_almoco_glicemia" placeholder="—" min="20" max="600" inputmode="numeric">
+          <div class="campo-hint">Meta antes das refeições: 80–130</div>
+        </div>
+        <div class="form-campo">
+          <div class="campo-cabecalho">
+            <label>Insulina Rápida (U)</label>
+            <button type="button" class="btn-info" onclick="abrirModal('insulina_rapida')">i</button>
+          </div>
+          <input type="number" id="pre_almoco_insulina" placeholder="—" min="0" max="100" step="0.5" inputmode="decimal">
+          <div class="campo-hint">Unidades aplicadas</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2H APÓS ALMOÇO -->
+    <div class="secao secao-pos-almoco">
+      <div class="secao-cabecalho">
+        <span class="secao-emoji">🕑</span>
+        <div class="secao-texto">
+          <h3>2 horas após o Almoço</h3>
+          <p>Medição feita <strong>exatamente 2 horas depois de começar a almoçar</strong>. Mostra como o corpo processou a refeição.</p>
+        </div>
+      </div>
+      <div class="form-linha">
+        <div class="form-campo">
+          <div class="campo-cabecalho">
+            <label>Glicemia (mg/dL)</label>
+            <button type="button" class="btn-info" onclick="abrirModal('glicemia_pos')">i</button>
+          </div>
+          <input type="number" id="pos_almoco_glicemia" placeholder="—" min="20" max="600" inputmode="numeric">
+          <div class="campo-hint">Meta 2h após refeição: &lt;180</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRÉ-JANTAR -->
+    <div class="secao secao-jantar">
+      <div class="secao-cabecalho">
+        <span class="secao-emoji">🌆</span>
+        <div class="secao-texto">
+          <h3>Antes do Jantar</h3>
+          <p>Medição feita <strong>antes de jantar</strong>. Se o valor estiver alto, o médico poderá ajustar a dose.</p>
+        </div>
+      </div>
+      <div class="form-linha">
+        <div class="form-campo">
+          <div class="campo-cabecalho">
+            <label>Glicemia (mg/dL)</label>
+            <button type="button" class="btn-info" onclick="abrirModal('glicemia_pre')">i</button>
+          </div>
+          <input type="number" id="pre_jantar_glicemia" placeholder="—" min="20" max="600" inputmode="numeric">
+          <div class="campo-hint">Meta antes das refeições: 80–130</div>
+        </div>
+        <div class="form-campo">
+          <div class="campo-cabecalho">
+            <label>Insulina Rápida (U)</label>
+            <button type="button" class="btn-info" onclick="abrirModal('insulina_rapida')">i</button>
+          </div>
+          <input type="number" id="pre_jantar_insulina" placeholder="—" min="0" max="100" step="0.5" inputmode="decimal">
+          <div class="campo-hint">Unidades aplicadas</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2H APÓS JANTAR -->
+    <div class="secao secao-pos-jantar">
+      <div class="secao-cabecalho">
+        <span class="secao-emoji">🌙</span>
+        <div class="secao-texto">
+          <h3>2 horas após o Jantar</h3>
+          <p>Medição feita <strong>2 horas depois de jantar</strong>. Importante para garantir que a glicemia não fique alta durante a noite.</p>
+        </div>
+      </div>
+      <div class="form-linha">
+        <div class="form-campo">
+          <div class="campo-cabecalho">
+            <label>Glicemia (mg/dL)</label>
+            <button type="button" class="btn-info" onclick="abrirModal('glicemia_pos')">i</button>
+          </div>
+          <input type="number" id="pos_jantar_glicemia" placeholder="—" min="20" max="600" inputmode="numeric">
+          <div class="campo-hint">Meta 2h após refeição: &lt;180</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INSULINA LENTA & OZIVY -->
+    <div class="secao secao-insulina">
+      <div class="secao-cabecalho">
+        <span class="secao-emoji">💊</span>
+        <div class="secao-texto">
+          <h3>Medicações do Dia</h3>
+          <p>Registre a insulina de ação lenta e, quando for o dia, a dose semanal do OZIVY.</p>
+        </div>
+      </div>
+      <div class="form-linha">
+        <div class="form-campo">
+          <div class="campo-cabecalho">
+            <label>Insulina Lenta (U)</label>
+            <button type="button" class="btn-info" onclick="abrirModal('insulina_lenta')">i</button>
+          </div>
+          <input type="number" id="insulina_lenta" placeholder="—" min="0" max="100" step="0.5" inputmode="decimal">
+          <div class="campo-hint">Geralmente aplicada à noite</div>
+        </div>
+        <div class="form-campo">
+          <div class="campo-cabecalho">
+            <label>OZIVY — semanal (mg)</label>
+            <button type="button" class="btn-info" onclick="abrirModal('ozivy')">i</button>
+          </div>
+          <input type="number" id="ozivy" placeholder="—" min="0" max="5" step="0.25" inputmode="decimal">
+          <div class="campo-hint">Preencha apenas no dia da dose</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OBSERVAÇÕES -->
+    <div class="secao" style="background:#f8f8f8;border-left-color:#aaa">
+      <div class="secao-cabecalho">
+        <span class="secao-emoji">📝</span>
+        <div class="secao-texto">
+          <h3>Observações do Dia</h3>
+          <p>Algo diferente hoje? Anote aqui: sintomas, o que comeu, atividade física, mal-estar, esqueceu a medicação... Essas informações ajudam muito o médico!</p>
+        </div>
+      </div>
+      <div class="campo-obs">
+        <textarea id="observacoes" placeholder="Ex: Senti tontura às 15h. Comi fora no almoço. Fiz uma caminhada de 30 minutos..."></textarea>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-azul" style="font-size:1.1rem;padding:16px">
+      ✅ Salvar Registro de Hoje
+    </button>
+    <button type="button" class="btn btn-cinza" onclick="limparFormulario()">🗑️ Limpar campos</button>
+
+  </form>
+</div>
+
+<!-- ===== HISTÓRICO ===== -->
+<div class="pagina" id="pg-historico">
+  <div class="card">
+    <div class="card-titulo">📋 Histórico de Registros</div>
+    <div id="resumo-geral" class="resumo-grid"></div>
+    <div class="tabela-wrapper">
+      <table id="tabela-historico">
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Jejum</th><th>Ins.J</th>
+            <th>Pré-Alm</th><th>Ins.A</th>
+            <th>Pós-Alm</th>
+            <th>Pré-Jan</th><th>Ins.J</th>
+            <th>Pós-Jan</th>
+            <th>Ins.Lenta</th>
+            <th>OZIVY</th>
+            <th>Obs.</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="corpo-historico"></tbody>
+      </table>
+    </div>
+    <p id="historico-vazio" class="vazio" style="display:none">Nenhum registro ainda. Comece registrando a glicemia de hoje! 😊</p>
+  </div>
+</div>
+
+<!-- ===== RELATÓRIO ===== -->
+<div class="pagina" id="pg-relatorio">
+  <div class="card no-print">
+    <div class="card-titulo">📊 Relatório Semanal para o Médico</div>
+    <p style="font-size:0.85rem;color:var(--cinza);margin-bottom:12px">Selecione a semana e baixe o PDF para levar na consulta ou enviar pelo WhatsApp.</p>
+    <div class="semana-seletor">
+      <label style="font-size:0.85rem;color:var(--cinza);white-space:nowrap">Semana:</label>
+      <select id="select-semana" onchange="gerarRelatorio()"></select>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-azul btn-sm" onclick="gerarPDF()">📄 Baixar PDF</button>
+      <button class="btn btn-verde btn-sm" onclick="window.print()">🖨️ Imprimir</button>
+    </div>
+  </div>
+  <div id="conteudo-relatorio"></div>
+</div>
+
+<!-- ===== CONFIGURAÇÕES ===== -->
+<div class="pagina" id="pg-config">
+
+  <div class="card">
+    <div class="card-titulo">⚙️ Configurações do App</div>
+    <p style="font-size:0.85rem;color:var(--cinza);margin-bottom:16px">
+      Cadastre aqui as pessoas que devem ser contatadas em caso de emergência, e os dados do médico responsável.
+      Esses contatos aparecem no <strong>botão de Emergência 🆘</strong>.
+    </p>
+
+    <!-- MÉDICO -->
+    <div class="config-secao">
+      <h3>🩺 Médico Responsável</h3>
+      <div class="form-linha-cfg">
+        <div class="config-campo">
+          <label>Nome completo</label>
+          <input type="text" id="med_nome" placeholder="Dr. João da Silva">
+        </div>
+        <div class="config-campo">
+          <label>Especialidade</label>
+          <input type="text" id="med_especialidade" placeholder="Endocrinologista">
+        </div>
+      </div>
+      <div class="form-linha-cfg">
+        <div class="config-campo">
+          <label>Telefone (com DDD)</label>
+          <input type="tel" id="med_telefone" placeholder="(11) 99999-9999" inputmode="tel">
+        </div>
+        <div class="config-campo">
+          <label>WhatsApp (com DDD)</label>
+          <input type="tel" id="med_whatsapp" placeholder="(11) 99999-9999" inputmode="tel">
+        </div>
+      </div>
+      <div class="config-campo">
+        <label>E-mail</label>
+        <input type="email" id="med_email" placeholder="dr.joao@clinica.com.br">
+      </div>
+      <button class="btn btn-azul" style="margin-top:4px" onclick="salvarMedico()">💾 Salvar dados do médico</button>
+    </div>
+
+    <!-- CONTATOS DE EMERGÊNCIA -->
+    <div class="config-secao">
+      <h3>👥 Contatos de Emergência</h3>
+      <p style="font-size:0.82rem;color:var(--cinza);margin-bottom:12px">Familiares ou cuidadores para contato rápido em caso de urgência.</p>
+      <div class="contatos-lista" id="lista-contatos-cfg"></div>
+
+      <div class="form-novo-contato">
+        <h4>➕ Adicionar contato</h4>
+        <div class="form-linha-cfg">
+          <div class="config-campo">
+            <label>Nome</label>
+            <input type="text" id="nc_nome" placeholder="Ex: Adriano (filho)">
+          </div>
+          <div class="config-campo">
+            <label>Relação</label>
+            <input type="text" id="nc_relacao" placeholder="Ex: Filho, Esposa...">
+          </div>
+        </div>
+        <div class="form-linha-cfg">
+          <div class="config-campo">
+            <label>Telefone (com DDD)</label>
+            <input type="tel" id="nc_telefone" placeholder="(11) 99999-9999" inputmode="tel">
+          </div>
+          <div class="config-campo">
+            <label>WhatsApp (com DDD)</label>
+            <input type="tel" id="nc_whatsapp" placeholder="(11) 99999-9999" inputmode="tel">
+          </div>
+        </div>
+        <div class="config-campo">
+          <label>E-mail</label>
+          <input type="email" id="nc_email" placeholder="contato@email.com">
+        </div>
+        <button class="btn btn-verde" onclick="adicionarContato()">✅ Adicionar contato</button>
+      </div>
+    </div>
+
+    <div id="msg-config" class="aviso-box" style="margin-top:4px"></div>
+  </div>
+</div>
+
+<!-- ===== EXPORTAR ===== -->
+<div class="pagina" id="pg-exportar">
+  <div class="card">
+    <div class="card-titulo">💾 Exportar Dados</div>
+    <p style="margin-bottom:14px;font-size:0.9rem;color:var(--cinza)">
+      Exporte todos os registros acumulados para planilha Excel ou faça backup dos dados.
+    </p>
+    <button class="btn btn-verde" onclick="exportarExcel()">📊 Exportar Planilha Excel (todos os dados)</button>
+    <button class="btn btn-azul" onclick="exportarJSON()" style="margin-top:4px">💾 Fazer Backup (arquivo JSON)</button>
+    <button class="btn btn-amarelo" onclick="importarJSON()" style="margin-top:4px">📂 Restaurar Backup (arquivo JSON)</button>
+    <input type="file" id="arquivo-json" accept=".json" style="display:none" onchange="processarImportacao(event)">
+    <div id="msg-exportar" class="aviso-box" style="margin-top:10px"></div>
+  </div>
+  <div class="card">
+    <div class="card-titulo">ℹ️ Sobre o App</div>
+    <p style="font-size:0.85rem;color:var(--cinza);line-height:1.7">
+      Os dados ficam salvos <strong>neste aparelho</strong>, dentro do navegador.<br>
+      Use o <em>Fazer Backup</em> regularmente para não perder os dados se trocar de celular ou limpar o navegador.<br><br>
+      Para abrir o app, basta dar dois cliques no arquivo <strong>glicemia-reinaldo.html</strong>.
+    </p>
+  </div>
+</div>
+
+<!-- ===== MODAIS DE AJUDA ===== -->
+<script>
+const INFOS = {
+  glicemia: {
+    emoji: '🩸',
+    titulo: 'O que é a Glicemia?',
+    corpo: `
+      <p>A glicemia é a quantidade de açúcar (glicose) no sangue, medida em <strong>mg/dL</strong> (miligramas por decilitro).</p>
+      <p><strong>Valores de referência:</strong></p>
+      <ul>
+        <li><span class="tag-normal">Normal em jejum</span> — 70 a 99 mg/dL</li>
+        <li><span class="tag-atencao">Pré-diabetes</span> — 100 a 125 mg/dL</li>
+        <li>Diabetes confirmado: acima de 126 mg/dL em jejum</li>
+      </ul>
+      <p>Sempre anote o valor exato que aparecer no aparelho.</p>
+    `
+  },
+  glicemia_pre: {
+    emoji: '🍽️',
+    titulo: 'Glicemia antes das refeições',
+    corpo: `
+      <p>Esta medição é feita <strong>antes de comer</strong>, idealmente 15 a 30 minutos antes da refeição.</p>
+      <p><strong>Meta recomendada antes de comer:</strong></p>
+      <ul>
+        <li><span class="tag-normal">Boa</span> — entre 80 e 130 mg/dL</li>
+        <li>Abaixo de 70 → hipoglicemia, tome algo doce e avise o médico</li>
+        <li>Acima de 180 → converse com o médico sobre ajuste de dose</li>
+      </ul>
+    `
+  },
+  glicemia_pos: {
+    emoji: '⏱️',
+    titulo: 'Glicemia 2 horas após a refeição',
+    corpo: `
+      <p>Mede como o corpo processou a refeição. O relógio começa a contar a partir do <strong>primeiro garfo</strong>.</p>
+      <p><strong>Meta 2 horas após comer:</strong></p>
+      <ul>
+        <li><span class="tag-normal">Boa</span> — abaixo de 180 mg/dL</li>
+        <li>Valores acima disso indicam que o açúcar da refeição não foi bem processado</li>
+      </ul>
+      <p>Se o valor estiver sempre alto após o almoço, pode ser necessário ajustar a dieta ou a dose de insulina.</p>
+    `
+  },
+  insulina_rapida: {
+    emoji: '💉',
+    titulo: 'O que é Insulina Rápida?',
+    corpo: `
+      <p>A insulina rápida (ou de ação rápida) é aplicada <strong>antes das refeições</strong> para controlar o açúcar que entra no sangue com a comida.</p>
+      <p><strong>Como funciona:</strong></p>
+      <ul>
+        <li>Começa a agir em 15–30 minutos</li>
+        <li>Pico de ação em 1–2 horas</li>
+        <li>Duração de 3–5 horas</li>
+      </ul>
+      <p>A dose é definida pelo médico e pode variar conforme o valor da glicemia e o que vai comer.</p>
+    `
+  },
+  insulina_lenta: {
+    emoji: '🌙',
+    titulo: 'O que é Insulina Lenta?',
+    corpo: `
+      <p>A insulina lenta (ou de ação prolongada) é aplicada geralmente <strong>uma vez por dia, à noite</strong>. Ela mantém a glicemia estável durante as horas sem alimentação.</p>
+      <p><strong>Como funciona:</strong></p>
+      <ul>
+        <li>Começa a agir em 1–2 horas</li>
+        <li>Age de forma estável por 20–24 horas</li>
+        <li>Não tem pico pronunciado</li>
+      </ul>
+      <p>Diferente da insulina rápida, ela não é usada para "corrigir" uma glicemia alta pontual — ela é a base do controle diário.</p>
+    `
+  },
+  ozivy: {
+    emoji: '📅',
+    titulo: 'O que é o OZIVY?',
+    corpo: `
+      <p>OZIVY (semaglutida) é um medicamento injetável que é aplicado <strong>uma vez por semana</strong>, no mesmo dia e horário.</p>
+      <p><strong>Para que serve:</strong></p>
+      <ul>
+        <li>Ajuda a controlar a glicemia ao longo da semana</li>
+        <li>Reduz o apetite e pode ajudar no peso</li>
+        <li>Atua de forma complementar à insulina</li>
+      </ul>
+      <p>Preencha este campo <strong>apenas no dia em que aplicou</strong>. Nos outros dias, deixe em branco.</p>
+    `
+  }
+};
+
+function abrirModal(tipo) {
+  const info = INFOS[tipo];
+  if (!info) return;
+  document.getElementById('modal-emoji').textContent = info.emoji;
+  document.getElementById('modal-titulo').textContent = info.titulo;
+  document.getElementById('modal-corpo').innerHTML = info.corpo;
+  document.getElementById('modal-overlay').classList.add('aberto');
+}
+function fecharModal(e) {
+  if (!e || e.target === document.getElementById('modal-overlay') || e.currentTarget.classList.contains('modal-fechar')) {
+    document.getElementById('modal-overlay').classList.remove('aberto');
+  }
+}
+</script>
+
+<script>
+const STORAGE_KEY = 'glicemia_reinaldo_v1';
+
+function dados() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+  catch { return {}; }
+}
+function salvarDados(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); }
+
+function hoje() { return new Date().toISOString().split('T')[0]; }
+
+function formatarData(iso) {
+  const [y, m, dia] = iso.split('-');
+  return `${dia}/${m}/${y}`;
+}
+
+function diaSemana(iso) {
+  const dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  return dias[new Date(iso + 'T12:00:00').getDay()];
+}
+
+function diaSemanaAbrev(iso) {
+  const dias = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  return dias[new Date(iso + 'T12:00:00').getDay()];
+}
+
+function classeGlicemia(v) {
+  if (v === null || v === undefined) return '';
+  if (v < 70) return 'baixo';
+  if (v > 180) return 'alto';
+  return 'normal';
+}
+
+function saudacao() {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return { texto: 'Bom dia, Reinaldo! ☀️', sub: 'Hora de registrar a glicemia em jejum. Não se esqueça de medir antes de comer!', emoji: '🌅' };
+  if (h >= 12 && h < 18) return { texto: 'Boa tarde, Reinaldo! 🌤️', sub: 'Já está na hora de anotar as medições do almoço. Tudo bem por aí?', emoji: '☀️' };
+  return { texto: 'Boa noite, Reinaldo! 🌙', sub: 'Vamos registrar as medições da noite e fechar o dia completo.', emoji: '🌙' };
+}
+
+function irPara(pg, btn) {
+  document.querySelectorAll('.pagina').forEach(p => p.classList.remove('ativa'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('ativo'));
+  document.getElementById('pg-' + pg).classList.add('ativa');
+  if (btn) btn.classList.add('ativo');
+  if (pg === 'historico') renderHistorico();
+  if (pg === 'relatorio') { popularSelectSemana(); gerarRelatorio(); }
+  if (pg === 'config') iniciarConfig();
+}
+
+// ===== REGISTRAR =====
+
+function iniciarFormulario() {
+  const s = saudacao();
+  document.getElementById('saudacao-texto').textContent = s.texto;
+  document.getElementById('saudacao-sub').textContent = s.sub;
+  document.getElementById('saudacao-emoji').textContent = s.emoji;
+
+  const nomeDia = diaSemana(hoje());
+  document.getElementById('saudacao-data').textContent = `${nomeDia}, ${formatarData(hoje())}`;
+  document.getElementById('data-hoje').textContent = `${formatarData(hoje())} — ${nomeDia}`;
+
+  atualizarStatusDia();
+
+  document.getElementById('data-registro').value = hoje();
+  verificarRegistroExistente();
+}
+
+function verificarRegistroExistente() {
+  const data = document.getElementById('data-registro').value;
+  const d = dados();
+  const aviso = document.getElementById('aviso-existente');
+  if (d[data]) {
+    aviso.classList.add('mostrar');
+    preencherFormulario(d[data]);
+  } else {
+    aviso.classList.remove('mostrar');
+    limparFormulario(false);
+  }
+}
+
+function preencherFormulario(reg) {
+  const campos = ['jejum_glicemia','jejum_insulina','pre_almoco_glicemia','pre_almoco_insulina',
+    'pos_almoco_glicemia','pre_jantar_glicemia','pre_jantar_insulina','pos_jantar_glicemia',
+    'insulina_lenta','ozivy'];
+  campos.forEach(c => {
+    const el = document.getElementById(c);
+    if (el) el.value = (reg[c] !== undefined && reg[c] !== null) ? reg[c] : '';
+  });
+  const obs = document.getElementById('observacoes');
+  if (obs) obs.value = reg.observacoes || '';
+}
+
+function limparFormulario(resetData = true) {
+  const campos = ['jejum_glicemia','jejum_insulina','pre_almoco_glicemia','pre_almoco_insulina',
+    'pos_almoco_glicemia','pre_jantar_glicemia','pre_jantar_insulina','pos_jantar_glicemia',
+    'insulina_lenta','ozivy','observacoes'];
+  campos.forEach(c => { const el = document.getElementById(c); if (el) el.value = ''; });
+  if (resetData) document.getElementById('data-registro').value = hoje();
+  document.getElementById('aviso-existente').classList.remove('mostrar');
+}
+
+function salvarRegistro(e) {
+  e.preventDefault();
+  const data = document.getElementById('data-registro').value;
+  if (!data) { toast('⚠️ Selecione uma data!', true); return; }
+
+  const pegar = id => {
+    const v = document.getElementById(id)?.value;
+    return (v !== '' && v !== undefined) ? parseFloat(v) : null;
+  };
+
+  const reg = {
+    jejum_glicemia: pegar('jejum_glicemia'),
+    jejum_insulina: pegar('jejum_insulina'),
+    pre_almoco_glicemia: pegar('pre_almoco_glicemia'),
+    pre_almoco_insulina: pegar('pre_almoco_insulina'),
+    pos_almoco_glicemia: pegar('pos_almoco_glicemia'),
+    pre_jantar_glicemia: pegar('pre_jantar_glicemia'),
+    pre_jantar_insulina: pegar('pre_jantar_insulina'),
+    pos_jantar_glicemia: pegar('pos_jantar_glicemia'),
+    insulina_lenta: pegar('insulina_lenta'),
+    ozivy: pegar('ozivy'),
+    observacoes: document.getElementById('observacoes')?.value?.trim() || '',
+  };
+
+  reg.total_insulina_rapida = [reg.jejum_insulina, reg.pre_almoco_insulina, reg.pre_jantar_insulina]
+    .filter(v => v !== null).reduce((a, b) => a + b, 0) || null;
+
+  const d = dados();
+  d[data] = reg;
+  salvarDados(d);
+
+  toast('✅ Registro salvo para ' + formatarData(data) + '! Continue assim, Reinaldo! 💪');
+  document.getElementById('aviso-existente').classList.add('mostrar');
+  if (data === hoje()) atualizarStatusDia();
+}
+
+// ===== HISTÓRICO =====
+
+function renderHistorico() {
+  const d = dados();
+  const datas = Object.keys(d).sort().reverse();
+  const corpo = document.getElementById('corpo-historico');
+  const vazio = document.getElementById('historico-vazio');
+  const resumo = document.getElementById('resumo-geral');
+
+  if (datas.length === 0) {
+    corpo.innerHTML = '';
+    vazio.style.display = 'block';
+    resumo.innerHTML = '';
+    return;
+  }
+  vazio.style.display = 'none';
+
+  const todasGlic = datas.flatMap(dt => {
+    const r = d[dt];
+    return [r.jejum_glicemia,r.pre_almoco_glicemia,r.pos_almoco_glicemia,r.pre_jantar_glicemia,r.pos_jantar_glicemia].filter(v => v !== null);
+  });
+  const media = todasGlic.length ? Math.round(todasGlic.reduce((a,b)=>a+b,0)/todasGlic.length) : '—';
+  const max = todasGlic.length ? Math.max(...todasGlic) : '—';
+  const min = todasGlic.length ? Math.min(...todasGlic) : '—';
+
+  resumo.innerHTML = `
+    <div class="resumo-item"><div class="valor">${datas.length}</div><div class="rotulo">Dias registrados</div></div>
+    <div class="resumo-item"><div class="valor">${media}</div><div class="rotulo">Média glicemia (mg/dL)</div></div>
+    <div class="resumo-item"><div class="valor" style="color:var(--vermelho)">${max}</div><div class="rotulo">Maior valor</div></div>
+    <div class="resumo-item"><div class="valor" style="color:var(--laranja)">${min}</div><div class="rotulo">Menor valor</div></div>
+  `;
+
+  const cel = (v, tipo = 'glic') => {
+    if (v === null || v === undefined) return '<td>—</td>';
+    const cls = tipo === 'glic' ? classeGlicemia(v) : '';
+    return `<td class="${cls}">${v}</td>`;
+  };
+
+  corpo.innerHTML = datas.map(dt => {
+    const r = d[dt];
+    const obsIcon = r.observacoes ? `<span title="${r.observacoes.replace(/"/g,'&quot;')}">📝</span>` : '—';
+    return `<tr>
+      <td><strong>${diaSemanaAbrev(dt)}</strong><br>${formatarData(dt)}</td>
+      ${cel(r.jejum_glicemia)}${cel(r.jejum_insulina,'ins')}
+      ${cel(r.pre_almoco_glicemia)}${cel(r.pre_almoco_insulina,'ins')}
+      ${cel(r.pos_almoco_glicemia)}
+      ${cel(r.pre_jantar_glicemia)}${cel(r.pre_jantar_insulina,'ins')}
+      ${cel(r.pos_jantar_glicemia)}
+      ${cel(r.insulina_lenta,'ins')}${cel(r.ozivy,'ins')}
+      <td>${obsIcon}</td>
+      <td><button class="btn btn-vermelho btn-sm" onclick="excluirRegistro('${dt}')">🗑️</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function excluirRegistro(data) {
+  if (!confirm('Excluir o registro de ' + formatarData(data) + '?')) return;
+  const d = dados();
+  delete d[data];
+  salvarDados(d);
+  renderHistorico();
+}
+
+// ===== SEMANAS =====
+
+function semanasDosRegistros() {
+  const d = dados();
+  const datas = Object.keys(d).sort();
+  const semanas = {};
+  datas.forEach(dt => {
+    const date = new Date(dt + 'T12:00:00');
+    const dayOfWeek = date.getDay();
+    const diff = date.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+    const segunda = new Date(date.setDate(diff));
+    const key = segunda.toISOString().split('T')[0];
+    if (!semanas[key]) semanas[key] = [];
+    semanas[key].push(dt);
+  });
+  return semanas;
+}
+
+function popularSelectSemana() {
+  const semanas = semanasDosRegistros();
+  const chaves = Object.keys(semanas).sort().reverse();
+  const sel = document.getElementById('select-semana');
+  sel.innerHTML = chaves.length === 0
+    ? '<option>Nenhum dado registrado ainda</option>'
+    : chaves.map(k => {
+        const fim = new Date(k + 'T12:00:00'); fim.setDate(fim.getDate() + 6);
+        const fimStr = fim.toISOString().split('T')[0];
+        return `<option value="${k}">${formatarData(k)} a ${formatarData(fimStr)}</option>`;
+      }).join('');
+}
+
+function gerarRelatorio() {
+  const semanas = semanasDosRegistros();
+  const chave = document.getElementById('select-semana').value;
+  const d = dados();
+  const datas = (semanas[chave] || []).sort();
+  const div = document.getElementById('conteudo-relatorio');
+
+  if (datas.length === 0) {
+    div.innerHTML = '<div class="card"><p class="vazio">Nenhum dado para exibir nesta semana.</p></div>';
+    return;
+  }
+
+  const fim = new Date(chave + 'T12:00:00'); fim.setDate(fim.getDate() + 6);
+  const fimStr = fim.toISOString().split('T')[0];
+
+  const todasGlic = datas.flatMap(dt => {
+    const r = d[dt];
+    return [r.jejum_glicemia,r.pre_almoco_glicemia,r.pos_almoco_glicemia,r.pre_jantar_glicemia,r.pos_jantar_glicemia].filter(v => v !== null);
+  });
+  const media = todasGlic.length ? Math.round(todasGlic.reduce((a,b)=>a+b,0)/todasGlic.length) : '—';
+  const max = todasGlic.length ? Math.max(...todasGlic) : '—';
+  const min = todasGlic.length ? Math.min(...todasGlic) : '—';
+  const totalIns = datas.reduce((acc, dt) => acc + (d[dt].total_insulina_rapida || 0), 0);
+  const ozivySem = datas.map(dt => d[dt].ozivy).find(v => v !== null && v !== undefined) || '—';
+
+  const v = val => (val !== null && val !== undefined) ? val : '—';
+
+  const obsLinhas = datas.filter(dt => d[dt].observacoes).map(dt =>
+    `<tr><td><strong>${diaSemanaAbrev(dt)}</strong> ${formatarData(dt)}</td><td style="text-align:left">${d[dt].observacoes}</td></tr>`
+  ).join('');
+
+  div.innerHTML = `
+    <div class="card">
+      <div style="text-align:center;margin-bottom:18px">
+        <h2 style="font-size:1.3rem;color:var(--azul)">Relatório Semanal de Glicemia</h2>
+        <p style="font-size:0.9rem;color:var(--cinza);margin-top:4px">Paciente: <strong>Reinaldo O. Rocha</strong></p>
+        <div class="badge-data">📅 Semana: ${formatarData(chave)} a ${formatarData(fimStr)}</div>
+      </div>
+
+      <div class="resumo-grid" style="margin-bottom:18px">
+        <div class="resumo-item"><div class="valor">${media}</div><div class="rotulo">Média Glicemia (mg/dL)</div></div>
+        <div class="resumo-item"><div class="valor" style="color:var(--vermelho)">${max}</div><div class="rotulo">Maior valor (mg/dL)</div></div>
+        <div class="resumo-item"><div class="valor" style="color:var(--laranja)">${min}</div><div class="rotulo">Menor valor (mg/dL)</div></div>
+        <div class="resumo-item"><div class="valor">${totalIns.toFixed(1)}</div><div class="rotulo">Total Insulina Rápida (U)</div></div>
+        <div class="resumo-item"><div class="valor">${ozivySem}</div><div class="rotulo">Dose OZIVY (mg)</div></div>
+        <div class="resumo-item"><div class="valor">${datas.length}/7</div><div class="rotulo">Dias registrados</div></div>
+      </div>
+
+      <div class="tabela-wrapper">
+        <table style="font-size:0.78rem">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Jejum<br>(mg/dL)</th><th>Ins.J<br>(U)</th>
+              <th>Pré-Alm<br>(mg/dL)</th><th>Ins.A<br>(U)</th>
+              <th>2h Alm<br>(mg/dL)</th>
+              <th>Pré-Jan<br>(mg/dL)</th><th>Ins.J<br>(U)</th>
+              <th>2h Jan<br>(mg/dL)</th>
+              <th>Ins.Lenta<br>(U)</th>
+              <th>Tot.Ins.R<br>(U)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${datas.map(dt => {
+              const r = d[dt];
+              return `<tr>
+                <td><strong>${diaSemanaAbrev(dt)}</strong> ${formatarData(dt)}</td>
+                <td>${v(r.jejum_glicemia)}</td><td>${v(r.jejum_insulina)}</td>
+                <td>${v(r.pre_almoco_glicemia)}</td><td>${v(r.pre_almoco_insulina)}</td>
+                <td>${v(r.pos_almoco_glicemia)}</td>
+                <td>${v(r.pre_jantar_glicemia)}</td><td>${v(r.pre_jantar_insulina)}</td>
+                <td>${v(r.pos_jantar_glicemia)}</td>
+                <td>${v(r.insulina_lenta)}</td>
+                <td>${v(r.total_insulina_rapida)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      ${obsLinhas ? `
+      <div style="margin-top:16px">
+        <strong style="font-size:0.85rem">📝 Observações da semana:</strong>
+        <table style="margin-top:8px;font-size:0.82rem;width:100%;border-collapse:collapse">
+          <thead><tr><th style="background:var(--azul);color:white;padding:6px;width:120px">Dia</th><th style="background:var(--azul);color:white;padding:6px;text-align:left">Observação</th></tr></thead>
+          <tbody>${obsLinhas}</tbody>
+        </table>
+      </div>` : ''}
+
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--borda);font-size:0.75rem;color:var(--cinza)">
+        <strong>Referência:</strong> Normal (jejum): 70–99 mg/dL &nbsp;|&nbsp; Antes refeições: 80–130 mg/dL &nbsp;|&nbsp; 2h após refeições: &lt;180 mg/dL
+      </div>
+    </div>`;
+}
+
+// ===== PDF =====
+
+function gerarPDF() {
+  const semanas = semanasDosRegistros();
+  const chave = document.getElementById('select-semana').value;
+  const d = dados();
+  const datas = (semanas[chave] || []).sort();
+
+  if (datas.length === 0) { alert('Nenhum dado para exportar!'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+  const fim = new Date(chave + 'T12:00:00'); fim.setDate(fim.getDate() + 6);
+  const fimStr = fim.toISOString().split('T')[0];
+
+  doc.setFontSize(16); doc.setTextColor(26,111,190);
+  doc.text('Relatório Semanal de Glicemia', 148, 15, { align: 'center' });
+  doc.setFontSize(10); doc.setTextColor(80,80,80);
+  doc.text('Paciente: Reinaldo O. Rocha', 148, 22, { align: 'center' });
+  doc.text(`Semana: ${formatarData(chave)} a ${formatarData(fimStr)}`, 148, 28, { align: 'center' });
+
+  const todasGlic = datas.flatMap(dt => {
+    const r = d[dt];
+    return [r.jejum_glicemia,r.pre_almoco_glicemia,r.pos_almoco_glicemia,r.pre_jantar_glicemia,r.pos_jantar_glicemia].filter(v=>v!==null);
+  });
+  const media = todasGlic.length ? Math.round(todasGlic.reduce((a,b)=>a+b,0)/todasGlic.length) : '—';
+  const max = todasGlic.length ? Math.max(...todasGlic) : '—';
+  const min = todasGlic.length ? Math.min(...todasGlic) : '—';
+  const totalIns = datas.reduce((acc,dt)=>acc+(d[dt].total_insulina_rapida||0),0);
+
+  doc.setFontSize(9);
+  doc.text(`Média: ${media} mg/dL  |  Máximo: ${max} mg/dL  |  Mínimo: ${min} mg/dL  |  Total Insulina Rápida: ${totalIns.toFixed(1)} U  |  Dias registrados: ${datas.length}/7`, 148, 35, { align: 'center' });
+
+  const vv = val => (val !== null && val !== undefined) ? String(val) : '—';
+
+  const linhas = datas.map(dt => {
+    const r = d[dt];
+    return [
+      `${diaSemanaAbrev(dt)} ${formatarData(dt)}`,
+      vv(r.jejum_glicemia), vv(r.jejum_insulina),
+      vv(r.pre_almoco_glicemia), vv(r.pre_almoco_insulina),
+      vv(r.pos_almoco_glicemia),
+      vv(r.pre_jantar_glicemia), vv(r.pre_jantar_insulina),
+      vv(r.pos_jantar_glicemia),
+      vv(r.insulina_lenta),
+      vv(r.total_insulina_rapida),
+      vv(r.ozivy)
+    ];
+  });
+
+  doc.autoTable({
+    startY: 40,
+    head: [['Data','Jejum\n(mg/dL)','Ins.J\n(U)','Pré-Alm\n(mg/dL)','Ins.A\n(U)','2h Alm\n(mg/dL)','Pré-Jan\n(mg/dL)','Ins.J\n(U)','2h Jan\n(mg/dL)','Ins.Lenta\n(U)','Tot.Ins.R\n(U)','OZIVY\n(mg)']],
+    body: linhas,
+    theme: 'grid',
+    headStyles: { fillColor: [26,111,190], textColor: 255, fontSize: 8, halign: 'center' },
+    bodyStyles: { fontSize: 9, halign: 'center' },
+    columnStyles: { 0: { halign: 'left', cellWidth: 30 } },
+    didParseCell: function(data) {
+      if (data.section === 'body' && [1,3,5,6,8].includes(data.column.index)) {
+        const val = parseFloat(data.cell.raw);
+        if (!isNaN(val)) {
+          if (val < 70) data.cell.styles.textColor = [200,130,0];
+          else if (val > 180) data.cell.styles.textColor = [220,53,69];
+          else data.cell.styles.textColor = [40,167,69];
+        }
+      }
+    }
+  });
+
+  const obsComDados = datas.filter(dt => d[dt].observacoes);
+  if (obsComDados.length) {
+    let y = doc.lastAutoTable.finalY + 8;
+    doc.setFontSize(10); doc.setTextColor(26,111,190);
+    doc.text('Observações da Semana', 14, y); y += 6;
+    obsComDados.forEach(dt => {
+      doc.setFontSize(8); doc.setTextColor(60,60,60);
+      doc.text(`${diaSemanaAbrev(dt)} ${formatarData(dt)}: ${d[dt].observacoes}`, 14, y);
+      y += 5;
+    });
+  }
+
+  doc.setFontSize(7); doc.setTextColor(150,150,150);
+  doc.text('Normal (jejum): 70–99 mg/dL  |  Antes refeições: 80–130  |  2h após: <180 mg/dL', 148, doc.lastAutoTable.finalY + (obsComDados.length ? obsComDados.length*5+14 : 6), { align: 'center' });
+  doc.text(`Gerado em: ${formatarData(hoje())}`, 148, doc.lastAutoTable.finalY + (obsComDados.length ? obsComDados.length*5+20 : 11), { align: 'center' });
+
+  doc.save(`Glicemia_Reinaldo_${chave}.pdf`);
+}
+
+// ===== EXCEL =====
+
+function exportarExcel() {
+  const d = dados();
+  const datas = Object.keys(d).sort();
+  if (datas.length === 0) { toast('⚠️ Nenhum dado para exportar!', true); return; }
+
+  const cab = ['#','Data','Glicemia em Jejum (mg/dL)','Insulina Aplicada (U)','Glicemia pré-Almoço (mg/dL)','Insulina Aplicada (U)','Glicemia 2h após Almoço (mg/dL)','Glicemia pré-Jantar (mg/dL)','Insulina Aplicada (U)','Glicemia 2h após Jantar (mg/dL)','Dose Complementar de Insulina Lenta (U)','Total de Insulina Rápida Aplicada (U)','Dose Semanal OZIVY (mg)','Observações'];
+  const vv = val => (val !== null && val !== undefined) ? val : '';
+  const linhas = datas.map((dt, i) => {
+    const r = d[dt];
+    return [i+1, formatarData(dt), vv(r.jejum_glicemia), vv(r.jejum_insulina), vv(r.pre_almoco_glicemia), vv(r.pre_almoco_insulina), vv(r.pos_almoco_glicemia), vv(r.pre_jantar_glicemia), vv(r.pre_jantar_insulina), vv(r.pos_jantar_glicemia), vv(r.insulina_lenta), vv(r.total_insulina_rapida), vv(r.ozivy), r.observacoes || ''];
+  });
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([cab, ...linhas]);
+  ws['!cols'] = [{wch:4},{wch:12},{wch:22},{wch:18},{wch:22},{wch:18},{wch:24},{wch:22},{wch:18},{wch:24},{wch:30},{wch:28},{wch:20},{wch:40}];
+  XLSX.utils.book_append_sheet(wb, ws, 'CONTROLE DA GLICEMIA');
+  XLSX.writeFile(wb, `Glicemia_Reinaldo_${hoje()}.xlsx`);
+
+  toast(`✅ Planilha exportada com ${datas.length} registros!`);
+}
+
+function exportarJSON() {
+  const blob = new Blob([JSON.stringify(dados(), null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `backup_glicemia_${hoje()}.json`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function importarJSON() { document.getElementById('arquivo-json').click(); }
+
+function processarImportacao(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const d = JSON.parse(ev.target.result);
+      const qtd = Object.keys(d).length;
+      if (!confirm(`Importar ${qtd} registros? Isso substituirá os dados atuais.`)) return;
+      salvarDados(d);
+      toast(`✅ ${qtd} registros importados com sucesso!`);
+    } catch { alert('Arquivo inválido.'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+// ===== EMERGÊNCIA =====
+
+function abrirEmergencia() {
+  document.getElementById('modal-emergencia-overlay').classList.add('aberto');
+  // Mostra estado de carregamento enquanto busca localização
+  document.getElementById('lista-contatos-emerg').innerHTML = `
+    <div style="text-align:center;padding:20px;color:#555;font-size:1rem">
+      📍 Obtendo sua localização...<br>
+      <span style="font-size:0.85rem;color:#888">Isso pode levar alguns segundos</span>
+    </div>`;
+  obterLocalizacaoEMontar();
+}
+
+function fecharEmergencia(e) {
+  if (!e || e.target === document.getElementById('modal-emergencia-overlay') || e.currentTarget.classList.contains('modal-fechar')) {
+    document.getElementById('modal-emergencia-overlay').classList.remove('aberto');
+  }
+}
+
+function foneParaDiscagem(tel) {
+  return tel.replace(/\D/g, '');
+}
+
+function ultimaGlicemia() {
+  const d = dados();
+  const datas = Object.keys(d).sort().reverse();
+  for (const dt of datas) {
+    const r = d[dt];
+    const vals = [r.jejum_glicemia, r.pre_almoco_glicemia, r.pos_almoco_glicemia, r.pre_jantar_glicemia, r.pos_jantar_glicemia].filter(v => v !== null && v !== undefined);
+    if (vals.length) return { data: dt, valor: vals[vals.length - 1] };
+  }
+  return null;
+}
+
+function obterLocalizacaoEMontar() {
+  if (!navigator.geolocation) {
+    renderContatosEmergencia(null);
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => renderContatosEmergencia(pos.coords),
+    ()    => renderContatosEmergencia(null),
+    { timeout: 8000, maximumAge: 60000 }
+  );
+}
+
+function montarMensagemWA(tipo, nome, coords) {
+  const glic = ultimaGlicemia();
+  const locLinha = coords
+    ? `📍 Minha localização agora: https://maps.google.com/?q=${coords.latitude},${coords.longitude}`
+    : '📍 Localização não disponível no momento';
+  const glicLinha = glic
+    ? `⚠️ Última glicemia registrada: ${glic.valor} mg/dL (${formatarData(glic.data)})`
+    : '';
+
+  if (tipo === 'medico') {
+    return [
+      `🆘 EMERGÊNCIA — Reinaldo Rocha`,
+      ``,
+      `${nome}, sou seu paciente Reinaldo Rocha e preciso de ajuda urgente!`,
+      ``,
+      locLinha,
+      glicLinha,
+      ``,
+      `Por favor, entre em contato imediatamente.`
+    ].filter(l => l !== undefined && !(l === '' && !glicLinha)).join('\n');
+  } else {
+    return [
+      `🆘 EMERGÊNCIA`,
+      ``,
+      `${nome}, sou o Reinaldo (papai). Preciso de ajuda urgente!`,
+      ``,
+      locLinha,
+      glicLinha,
+      ``,
+      `Por favor, me ligue ou venha até mim o mais rápido possível!`
+    ].filter(l => l !== undefined && !(l === '' && !glicLinha)).join('\n');
+  }
+}
+
+function renderContatosEmergencia(coords) {
+  const cfg = config();
+  const contatos = cfg.contatos || [];
+  const medico = cfg.medico || {};
+  const div = document.getElementById('lista-contatos-emerg');
+  let html = '';
+
+  const locBadge = coords
+    ? `<div style="background:#e8f8ed;border:1px solid #28a745;border-radius:8px;padding:8px 12px;font-size:0.85rem;color:#155724;margin-bottom:14px;display:flex;align-items:center;gap:6px">
+        ✅ <strong>Localização obtida</strong> — será enviada automaticamente no WhatsApp
+       </div>`
+    : `<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:8px 12px;font-size:0.85rem;color:#856404;margin-bottom:14px;display:flex;align-items:center;gap:6px">
+        ⚠️ Localização não disponível — mensagem será enviada sem ela
+       </div>`;
+  html += locBadge;
+
+  if (medico.nome) {
+    const telMed = medico.telefone ? foneParaDiscagem(medico.telefone) : '';
+    const waMed  = medico.whatsapp ? foneParaDiscagem(medico.whatsapp) : '';
+    const msgMed = montarMensagemWA('medico', medico.nome, coords);
+    html += `
+      <div class="contato-card medico">
+        <div class="contato-avatar">🩺</div>
+        <div class="contato-info">
+          <div class="contato-nome">${medico.nome}</div>
+          <div class="contato-tipo">${medico.especialidade || 'Médico'}</div>
+          <div class="contato-acoes">
+            ${telMed ? `<a href="tel:${telMed}" class="btn-acao ligar">📞 Ligar</a>` : ''}
+            ${waMed  ? `<a href="https://wa.me/55${waMed}?text=${encodeURIComponent(msgMed)}" target="_blank" class="btn-acao whatsapp">💬 WhatsApp</a>` : ''}
+            ${medico.email ? `<a href="mailto:${medico.email}" class="btn-acao email">✉️ E-mail</a>` : ''}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  contatos.forEach(c => {
+    const tel = c.telefone ? foneParaDiscagem(c.telefone) : '';
+    const wa  = c.whatsapp ? foneParaDiscagem(c.whatsapp) : '';
+    const msg = montarMensagemWA('familiar', c.nome, coords);
+    html += `
+      <div class="contato-card">
+        <div class="contato-avatar">👤</div>
+        <div class="contato-info">
+          <div class="contato-nome">${c.nome}</div>
+          <div class="contato-tipo">${c.relacao || 'Contato'}</div>
+          <div class="contato-acoes">
+            ${tel ? `<a href="tel:${tel}" class="btn-acao ligar">📞 Ligar</a>` : ''}
+            ${wa  ? `<a href="https://wa.me/55${wa}?text=${encodeURIComponent(msg)}" target="_blank" class="btn-acao whatsapp">💬 WhatsApp</a>` : ''}
+            ${c.email ? `<a href="mailto:${c.email}" class="btn-acao email">✉️ E-mail</a>` : ''}
+          </div>
+        </div>
+      </div>`;
+  });
+
+  if (!medico.nome && contatos.length === 0) {
+    html += `<div class="sem-contato">
+      <strong>Nenhum contato cadastrado ainda.</strong>
+      Vá em <strong>⚙️ Config.</strong> para adicionar seus contatos de emergência e o médico.
+    </div>`;
+  }
+
+  div.innerHTML = html;
+}
+
+// ===== CONFIGURAÇÕES =====
+
+const CONFIG_KEY = 'glicemia_config_v1';
+
+function config() {
+  try { return JSON.parse(localStorage.getItem(CONFIG_KEY)) || {}; }
+  catch { return {}; }
+}
+function salvarConfig(c) { localStorage.setItem(CONFIG_KEY, JSON.stringify(c)); }
+
+function iniciarConfig() {
+  const cfg = config();
+  const med = cfg.medico || {};
+  ['nome','especialidade','telefone','whatsapp','email'].forEach(f => {
+    const el = document.getElementById('med_' + f);
+    if (el) el.value = med[f] || '';
+  });
+  renderContatosCfg();
+}
+
+function salvarMedico() {
+  const cfg = config();
+  cfg.medico = {
+    nome:          document.getElementById('med_nome').value.trim(),
+    especialidade: document.getElementById('med_especialidade').value.trim(),
+    telefone:      document.getElementById('med_telefone').value.trim(),
+    whatsapp:      document.getElementById('med_whatsapp').value.trim(),
+    email:         document.getElementById('med_email').value.trim(),
+  };
+  salvarConfig(cfg);
+  mostrarMsgConfig('✅ Dados do médico salvos com sucesso!');
+}
+
+function renderContatosCfg() {
+  const cfg = config();
+  const contatos = cfg.contatos || [];
+  const div = document.getElementById('lista-contatos-cfg');
+  if (contatos.length === 0) {
+    div.innerHTML = '<p style="font-size:0.85rem;color:var(--cinza);text-align:center;padding:8px">Nenhum contato cadastrado ainda.</p>';
+    return;
+  }
+  div.innerHTML = contatos.map((c, i) => `
+    <div class="contato-item-cfg">
+      <div style="font-size:1.4rem">👤</div>
+      <div class="ci-info">
+        <div class="ci-nome">${c.nome} <span style="font-weight:normal;color:var(--cinza);font-size:0.8rem">(${c.relacao || '—'})</span></div>
+        <div class="ci-detalhe">
+          ${c.telefone ? '📞 ' + c.telefone : ''}
+          ${c.whatsapp ? ' · 💬 ' + c.whatsapp : ''}
+          ${c.email ? ' · ✉️ ' + c.email : ''}
+        </div>
+      </div>
+      <button class="btn btn-vermelho btn-sm" onclick="removerContato(${i})">🗑️</button>
+    </div>`).join('');
+}
+
+function adicionarContato() {
+  const nome = document.getElementById('nc_nome').value.trim();
+  if (!nome) { alert('Informe pelo menos o nome do contato.'); return; }
+  const cfg = config();
+  if (!cfg.contatos) cfg.contatos = [];
+  cfg.contatos.push({
+    nome,
+    relacao:  document.getElementById('nc_relacao').value.trim(),
+    telefone: document.getElementById('nc_telefone').value.trim(),
+    whatsapp: document.getElementById('nc_whatsapp').value.trim(),
+    email:    document.getElementById('nc_email').value.trim(),
+  });
+  salvarConfig(cfg);
+  ['nc_nome','nc_relacao','nc_telefone','nc_whatsapp','nc_email'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  renderContatosCfg();
+  mostrarMsgConfig('✅ Contato adicionado com sucesso!');
+}
+
+function removerContato(i) {
+  const cfg = config();
+  const c = cfg.contatos[i];
+  if (!confirm(`Remover "${c.nome}" dos contatos de emergência?`)) return;
+  cfg.contatos.splice(i, 1);
+  salvarConfig(cfg);
+  renderContatosCfg();
+}
+
+function toast(texto, erro = false) {
+  const el = document.getElementById('toast-global');
+  el.textContent = texto;
+  el.className = 'toast visivel' + (erro ? ' erro' : '');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('visivel'), 3000);
+}
+
+function mostrarMsgConfig(texto) { toast(texto); }
+
+// ===== STATUS DO DIA =====
+
+function atualizarStatusDia() {
+  const reg = dados()[hoje()] || {};
+
+  const medicoes = [
+    { emoji: '🌅', label: 'Jejum',      campo: 'jejum_glicemia' },
+    { emoji: '☀️',  label: 'Pré-Almoço', campo: 'pre_almoco_glicemia' },
+    { emoji: '🕑',  label: '2h Almoço', campo: 'pos_almoco_glicemia' },
+    { emoji: '🌆',  label: 'Pré-Jantar', campo: 'pre_jantar_glicemia' },
+    { emoji: '🌙',  label: '2h Jantar',  campo: 'pos_jantar_glicemia' },
+  ];
+
+  const feitas = medicoes.filter(m => reg[m.campo] !== null && reg[m.campo] !== undefined).length;
+  const total  = medicoes.length;
+
+  // Badge geral
+  const statusEl = document.getElementById('saudacao-status');
+  if (feitas === 0) {
+    statusEl.innerHTML = `<span class="status-dia pendente">⏳ Nenhuma medição registrada hoje</span>`;
+  } else if (feitas === total) {
+    statusEl.innerHTML = `<span class="status-dia ok">✅ Todas as medições do dia concluídas!</span>`;
+  } else {
+    statusEl.innerHTML = `<span class="status-dia pendente">📋 ${feitas} de ${total} medições feitas hoje</span>`;
+  }
+
+  // Chips individuais
+  document.getElementById('medicoes-dia').innerHTML = medicoes.map(m => {
+    const feito = reg[m.campo] !== null && reg[m.campo] !== undefined;
+    return `
+      <div class="medicao-chip ${feito ? 'feito' : 'pendente'}">
+        <span class="mc-emoji">${m.emoji}</span>
+        <span class="mc-label">${m.label}</span>
+        <div class="mc-dot"></div>
+      </div>`;
+  }).join('');
+}
+
+// INIT
+iniciarFormulario();
+iniciarConfig();
+</script>
+</body>
+</html>
