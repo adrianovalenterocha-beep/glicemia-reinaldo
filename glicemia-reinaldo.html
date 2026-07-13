@@ -813,6 +813,24 @@
     <div id="msg-config" class="aviso-box" style="margin-top:4px"></div>
   </div>
 
+  <!-- SENHA DO APP -->
+  <div class="card">
+    <div class="card-titulo">🔑 Senha de Acesso ao App</div>
+    <p style="font-size:0.85rem;color:var(--cinza);margin-bottom:14px">
+      Senha usada para entrar no app quando não há conexão com o Google Planilhas.
+    </p>
+    <div class="config-campo">
+      <label>Senha atual</label>
+      <input type="password" id="cfg_senha_atual" placeholder="Digite a senha atual">
+    </div>
+    <div class="config-campo" style="margin-top:8px">
+      <label>Nova senha</label>
+      <input type="password" id="cfg_senha_nova" placeholder="Digite a nova senha">
+    </div>
+    <button class="btn btn-azul" style="margin-top:8px" onclick="alterarSenhaLocal()">🔑 Alterar senha</button>
+    <p style="font-size:0.8rem;color:var(--cinza);margin-top:8px">Senha padrão: <strong>reinaldo2024</strong></p>
+  </div>
+
   <!-- CONEXÃO COM GOOGLE PLANILHAS -->
   <div class="card">
     <div class="card-titulo">🔗 Conexão com Google Planilhas</div>
@@ -1002,39 +1020,59 @@ async function gasPost(body) {
 }
 
 // ===== Login =====
+function senhaLocal() {
+  try { return JSON.parse(localStorage.getItem(CONFIG_KEY))?.senha_app || 'reinaldo2024'; }
+  catch { return 'reinaldo2024'; }
+}
+
 async function fazerLogin() {
   const senhaInput = document.getElementById('login-senha').value.trim();
-  const erroEl    = document.getElementById('login-erro');
-  const statusEl  = document.getElementById('login-status');
+  const erroEl     = document.getElementById('login-erro');
+  const statusEl   = document.getElementById('login-status');
   erroEl.style.display = 'none';
-  statusEl.textContent = 'Verificando…';
+  statusEl.textContent = '';
 
-  try {
-    const cfg = gasConfig();
-    cfg.senha = senhaInput;
-    localStorage.setItem(GAS_KEY, JSON.stringify(cfg));
+  if (!senhaInput) { erroEl.style.display = 'block'; return; }
 
-    const res = await gasGet({ action: 'login' });
-    if (!res || !res.ok) {
-      statusEl.textContent = '';
+  if (gasUrl()) {
+    // Modo online: valida contra o Google Apps Script
+    statusEl.textContent = 'Verificando…';
+    try {
+      const cfg = gasConfig();
+      cfg.senha = senhaInput;
+      localStorage.setItem(GAS_KEY, JSON.stringify(cfg));
+
+      const res = await gasGet({ action: 'login' });
+      if (!res || !res.ok) {
+        statusEl.textContent = '';
+        erroEl.style.display = 'block';
+        return;
+      }
+      statusEl.textContent = 'Carregando dados…';
+      const dados_res = await gasGet({ action: 'getData' });
+      if (dados_res && dados_res.ok) {
+        _cache = dados_res.dados || {};
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(_cache));
+      }
+      entrarNoApp('☁️ Conectado à planilha do Google!');
+    } catch(err) {
+      statusEl.textContent = 'Erro de conexão. Verifique a URL do script.';
+    }
+  } else {
+    // Modo local: valida contra senha salva no dispositivo
+    if (senhaInput === senhaLocal()) {
+      entrarNoApp('');
+    } else {
       erroEl.style.display = 'block';
-      return;
     }
-
-    statusEl.textContent = 'Carregando dados…';
-    const dados_res = await gasGet({ action: 'getData' });
-    if (dados_res && dados_res.ok) {
-      _cache = dados_res.dados || {};
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(_cache));
-    }
-
-    document.getElementById('login-overlay').style.display = 'none';
-    iniciarFormulario();
-    iniciarConfig();
-    toast('✅ Conectado à planilha do Google!');
-  } catch(err) {
-    statusEl.textContent = 'Erro de conexão. Verifique a URL do script.';
   }
+}
+
+function entrarNoApp(msg) {
+  document.getElementById('login-overlay').style.display = 'none';
+  iniciarFormulario();
+  iniciarConfig();
+  if (msg) toast(msg);
 }
 
 // ===== Config GAS =====
@@ -1828,6 +1866,19 @@ function toast(texto, erro = false) {
 
 function mostrarMsgConfig(texto) { toast(texto); }
 
+function alterarSenhaLocal() {
+  const atual = document.getElementById('cfg_senha_atual').value;
+  const nova  = document.getElementById('cfg_senha_nova').value.trim();
+  if (atual !== senhaLocal()) { toast('⚠️ Senha atual incorreta.', true); return; }
+  if (!nova) { toast('⚠️ Digite a nova senha.', true); return; }
+  const cfg = config();
+  cfg.senha_app = nova;
+  salvarConfig(cfg);
+  document.getElementById('cfg_senha_atual').value = '';
+  document.getElementById('cfg_senha_nova').value = '';
+  toast('✅ Senha alterada com sucesso!');
+}
+
 // ===== STATUS DO DIA =====
 
 function atualizarStatusDia() {
@@ -1866,18 +1917,9 @@ function atualizarStatusDia() {
   }).join('');
 }
 
-// INIT
-if (gasUrl()) {
-  // Modo online: mostra tela de login
-  const overlay = document.getElementById('login-overlay');
-  overlay.style.display = 'flex';
-  // Pré-carrega dados locais em cache para o app não ficar em branco se o login demorar
-  _cache = (() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; } })();
-} else {
-  // Modo local: inicia normalmente
-  iniciarFormulario();
-  iniciarConfig();
-}
+// INIT — sempre exige senha
+_cache = (() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; } })();
+document.getElementById('login-overlay').style.display = 'flex';
 </script>
 </body>
 </html>
