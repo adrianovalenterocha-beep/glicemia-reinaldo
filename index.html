@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Glicemia - Reinaldo</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.6.0/jspdf.plugin.autotable.min.js"></script>
 <style>
@@ -443,6 +444,7 @@
   <button class="ativo" onclick="irPara('registrar', this)">📝 Registrar</button>
   <button onclick="irPara('historico', this)">📋 Histórico</button>
   <button onclick="irPara('relatorio', this)">📊 Relatório</button>
+  <button onclick="irPara('analise', this)">📈 Análise</button>
   <button onclick="irPara('exportar', this)">💾 Exportar</button>
   <button onclick="irPara('config', this)">⚙️ Config.</button>
 </nav>
@@ -720,18 +722,74 @@
 <!-- ===== RELATÓRIO ===== -->
 <div class="pagina" id="pg-relatorio">
   <div class="card no-print">
-    <div class="card-titulo">📊 Relatório Semanal para o Médico</div>
-    <p style="font-size:0.85rem;color:var(--cinza);margin-bottom:12px">Selecione a semana e baixe o PDF para levar na consulta ou enviar pelo WhatsApp.</p>
+    <div class="card-titulo">📊 Relatório para o Médico</div>
+    <p style="font-size:0.85rem;color:var(--cinza);margin-bottom:12px">Selecione o período e baixe o PDF para levar na consulta ou enviar pelo WhatsApp.</p>
     <div class="semana-seletor">
-      <label style="font-size:0.85rem;color:var(--cinza);white-space:nowrap">Semana:</label>
+      <label style="font-size:0.85rem;color:var(--cinza);white-space:nowrap">Período:</label>
+      <select id="select-periodo" onchange="onPeriodoChange()">
+        <option value="7">Últimos 7 dias</option>
+        <option value="14">Últimos 14 dias</option>
+        <option value="30">Últimos 30 dias</option>
+        <option value="semana">Semana específica...</option>
+      </select>
+    </div>
+    <div id="seletor-semana-wrap" style="display:none;margin-top:8px">
       <select id="select-semana" onchange="gerarRelatorio()"></select>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
       <button class="btn btn-azul btn-sm" onclick="gerarPDF()">📄 Baixar PDF</button>
       <button class="btn btn-verde btn-sm" onclick="window.print()">🖨️ Imprimir</button>
     </div>
   </div>
   <div id="conteudo-relatorio"></div>
+</div>
+
+<!-- ===== ANÁLISE ===== -->
+<div class="pagina" id="pg-analise">
+  <div class="card no-print">
+    <div class="card-titulo">📈 Análise Detalhada</div>
+    <p style="font-size:0.85rem;color:var(--cinza);margin-bottom:12px">Gráficos, estatísticas e tendências dos dados de glicemia.</p>
+    <div class="semana-seletor">
+      <label style="font-size:0.85rem;color:var(--cinza);white-space:nowrap">Período:</label>
+      <select id="analise-periodo" onchange="gerarAnalise()">
+        <option value="7">Últimos 7 dias</option>
+        <option value="14">Últimos 14 dias</option>
+        <option value="30" selected>Últimos 30 dias</option>
+        <option value="90">Últimos 90 dias</option>
+        <option value="0">Todos os dados</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-titulo">📉 Evolução da Glicemia</div>
+    <p style="font-size:0.8rem;color:var(--cinza);margin-bottom:10px">Valores diários por horário de medição + linha de tendência (jejum)</p>
+    <div style="position:relative;height:260px"><canvas id="chart-evolucao"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-titulo">🕐 Média por Horário de Medição</div>
+    <p style="font-size:0.8rem;color:var(--cinza);margin-bottom:10px">Análise transversal — média de glicemia em cada momento do dia</p>
+    <div style="position:relative;height:220px"><canvas id="chart-horarios"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-titulo">💉 Insulina Total por Dia</div>
+    <p style="font-size:0.8rem;color:var(--cinza);margin-bottom:10px">Insulina rápida aplicada diariamente</p>
+    <div style="position:relative;height:200px"><canvas id="chart-insulina"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-titulo">📊 Estatísticas Detalhadas</div>
+    <div id="analise-stats"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-titulo">📐 Análise de Regressão Linear</div>
+    <p style="font-size:0.8rem;color:var(--cinza);margin-bottom:10px">Tendência da glicemia em jejum ao longo do período selecionado</p>
+    <div style="position:relative;height:220px"><canvas id="chart-regressao"></canvas></div>
+    <div id="analise-regressao" style="margin-top:12px"></div>
+  </div>
 </div>
 
 <!-- ===== CONFIGURAÇÕES ===== -->
@@ -1140,7 +1198,8 @@ function irPara(pg, btn) {
   document.getElementById('pg-' + pg).classList.add('ativa');
   if (btn) btn.classList.add('ativo');
   if (pg === 'historico') renderHistorico();
-  if (pg === 'relatorio') { popularSelectSemana(); gerarRelatorio(); }
+  if (pg === 'relatorio') { popularSelectSemana(); onPeriodoChange(); }
+  if (pg === 'analise') gerarAnalise();
   if (pg === 'config') iniciarConfig();
 }
 
@@ -1324,6 +1383,7 @@ function popularSelectSemana() {
   const semanas = semanasDosRegistros();
   const chaves = Object.keys(semanas).sort().reverse();
   const sel = document.getElementById('select-semana');
+  if (!sel) return;
   sel.innerHTML = chaves.length === 0
     ? '<option>Nenhum dado registrado ainda</option>'
     : chaves.map(k => {
@@ -1333,20 +1393,53 @@ function popularSelectSemana() {
       }).join('');
 }
 
-function gerarRelatorio() {
-  const semanas = semanasDosRegistros();
-  const chave = document.getElementById('select-semana').value;
+function onPeriodoChange() {
+  const periodo = document.getElementById('select-periodo').value;
+  const wrap = document.getElementById('seletor-semana-wrap');
+  if (periodo === 'semana') {
+    wrap.style.display = 'block';
+    gerarRelatorio();
+  } else {
+    wrap.style.display = 'none';
+    gerarRelatorio();
+  }
+}
+
+function datasParaRelatorio() {
+  const periodo = document.getElementById('select-periodo')?.value || '7';
   const d = dados();
-  const datas = (semanas[chave] || []).sort();
+  const todasDatas = Object.keys(d).sort();
+  if (periodo === 'semana') {
+    const semanas = semanasDosRegistros();
+    const chave = document.getElementById('select-semana')?.value;
+    return { datas: (semanas[chave] || []).sort(), inicio: chave, fim: chave };
+  }
+  const dias = parseInt(periodo) || 0;
+  const datas = dias > 0
+    ? todasDatas.filter(dt => {
+        const diff = (new Date(hoje()) - new Date(dt + 'T12:00:00')) / 86400000;
+        return diff < dias;
+      })
+    : todasDatas;
+  return { datas, inicio: datas[0] || hoje(), fim: datas[datas.length - 1] || hoje() };
+}
+
+function gerarRelatorio() {
+  const { datas, inicio, fim } = datasParaRelatorio();
+  const d = dados();
   const div = document.getElementById('conteudo-relatorio');
+  const periodo = document.getElementById('select-periodo')?.value || '7';
 
   if (datas.length === 0) {
-    div.innerHTML = '<div class="card"><p class="vazio">Nenhum dado para exibir nesta semana.</p></div>';
+    div.innerHTML = '<div class="card"><p class="vazio">Nenhum dado para exibir neste período.</p></div>';
     return;
   }
 
-  const fim = new Date(chave + 'T12:00:00'); fim.setDate(fim.getDate() + 6);
-  const fimStr = fim.toISOString().split('T')[0];
+  let fimStr = fim;
+  if (periodo === 'semana') {
+    const fimD = new Date(inicio + 'T12:00:00'); fimD.setDate(fimD.getDate() + 6);
+    fimStr = fimD.toISOString().split('T')[0];
+  }
 
   const todasGlic = datas.flatMap(dt => {
     const r = d[dt];
@@ -1367,9 +1460,9 @@ function gerarRelatorio() {
   div.innerHTML = `
     <div class="card">
       <div style="text-align:center;margin-bottom:18px">
-        <h2 style="font-size:1.3rem;color:var(--azul)">Relatório Semanal de Glicemia</h2>
+        <h2 style="font-size:1.3rem;color:var(--azul)">Relatório de Glicemia</h2>
         <p style="font-size:0.9rem;color:var(--cinza);margin-top:4px">Paciente: <strong>Reinaldo O. Rocha</strong></p>
-        <div class="badge-data">📅 Semana: ${formatarData(chave)} a ${formatarData(fimStr)}</div>
+        <div class="badge-data">📅 ${formatarData(inicio)} a ${formatarData(fimStr)}</div>
       </div>
 
       <div class="resumo-grid" style="margin-bottom:18px">
@@ -1378,7 +1471,7 @@ function gerarRelatorio() {
         <div class="resumo-item"><div class="valor" style="color:var(--laranja)">${min}</div><div class="rotulo">Menor valor (mg/dL)</div></div>
         <div class="resumo-item"><div class="valor">${totalIns.toFixed(1)}</div><div class="rotulo">Total Insulina Rápida (U)</div></div>
         <div class="resumo-item"><div class="valor">${ozivySem}</div><div class="rotulo">Dose OZIVY (mg)</div></div>
-        <div class="resumo-item"><div class="valor">${datas.length}/7</div><div class="rotulo">Dias registrados</div></div>
+        <div class="resumo-item"><div class="valor">${datas.length}</div><div class="rotulo">Dias registrados</div></div>
       </div>
 
       <div class="tabela-wrapper">
@@ -1431,24 +1524,21 @@ function gerarRelatorio() {
 // ===== PDF =====
 
 function gerarPDF() {
-  const semanas = semanasDosRegistros();
-  const chave = document.getElementById('select-semana').value;
+  const { datas, inicio } = datasParaRelatorio();
   const d = dados();
-  const datas = (semanas[chave] || []).sort();
 
-  if (datas.length === 0) { alert('Nenhum dado para exportar!'); return; }
+  if (datas.length === 0) { toast('⚠️ Nenhum dado para exportar!', true); return; }
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
-  const fim = new Date(chave + 'T12:00:00'); fim.setDate(fim.getDate() + 6);
-  const fimStr = fim.toISOString().split('T')[0];
+  const fimStr = datas[datas.length - 1];
 
   doc.setFontSize(16); doc.setTextColor(26,111,190);
-  doc.text('Relatório Semanal de Glicemia', 148, 15, { align: 'center' });
+  doc.text('Relatório de Glicemia', 148, 15, { align: 'center' });
   doc.setFontSize(10); doc.setTextColor(80,80,80);
   doc.text('Paciente: Reinaldo O. Rocha', 148, 22, { align: 'center' });
-  doc.text(`Semana: ${formatarData(chave)} a ${formatarData(fimStr)}`, 148, 28, { align: 'center' });
+  doc.text(`Período: ${formatarData(datas[0])} a ${formatarData(fimStr)}`, 148, 28, { align: 'center' });
 
   const todasGlic = datas.flatMap(dt => {
     const r = d[dt];
@@ -1460,7 +1550,7 @@ function gerarPDF() {
   const totalIns = datas.reduce((acc,dt)=>acc+(d[dt].total_insulina_rapida||0),0);
 
   doc.setFontSize(9);
-  doc.text(`Média: ${media} mg/dL  |  Máximo: ${max} mg/dL  |  Mínimo: ${min} mg/dL  |  Total Insulina Rápida: ${totalIns.toFixed(1)} U  |  Dias registrados: ${datas.length}/7`, 148, 35, { align: 'center' });
+  doc.text(`Média: ${media} mg/dL  |  Máximo: ${max} mg/dL  |  Mínimo: ${min} mg/dL  |  Total Insulina Rápida: ${totalIns.toFixed(1)} U  |  Dias: ${datas.length}`, 148, 35, { align: 'center' });
 
   const vv = val => (val !== null && val !== undefined) ? String(val) : '—';
 
@@ -1503,7 +1593,7 @@ function gerarPDF() {
   if (obsComDados.length) {
     let y = doc.lastAutoTable.finalY + 8;
     doc.setFontSize(10); doc.setTextColor(26,111,190);
-    doc.text('Observações da Semana', 14, y); y += 6;
+    doc.text('Observações do Período', 14, y); y += 6;
     obsComDados.forEach(dt => {
       doc.setFontSize(8); doc.setTextColor(60,60,60);
       doc.text(`${diaSemanaAbrev(dt)} ${formatarData(dt)}: ${d[dt].observacoes}`, 14, y);
@@ -1915,6 +2005,289 @@ function atualizarStatusDia() {
         <div class="mc-dot"></div>
       </div>`;
   }).join('');
+}
+
+// ===== ANÁLISE =====
+
+let _charts = {};
+
+function destruirChart(id) {
+  if (_charts[id]) { _charts[id].destroy(); delete _charts[id]; }
+}
+
+function regressaoLinear(pontos) {
+  const n = pontos.length;
+  if (n < 2) return null;
+  const sumX  = pontos.reduce((a,p) => a + p.x, 0);
+  const sumY  = pontos.reduce((a,p) => a + p.y, 0);
+  const sumXY = pontos.reduce((a,p) => a + p.x * p.y, 0);
+  const sumX2 = pontos.reduce((a,p) => a + p.x * p.x, 0);
+  const a = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const b = (sumY - a * sumX) / n;
+  const yMed  = sumY / n;
+  const ssTot = pontos.reduce((acc,p) => acc + (p.y - yMed) ** 2, 0);
+  const ssRes = pontos.reduce((acc,p) => acc + (p.y - (a * p.x + b)) ** 2, 0);
+  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
+  return { a, b, r2 };
+}
+
+function datasAnalise() {
+  const periodo = parseInt(document.getElementById('analise-periodo')?.value || '30');
+  const d = dados();
+  const todas = Object.keys(d).sort();
+  if (!periodo) return todas;
+  return todas.filter(dt => {
+    const diff = (new Date(hoje()) - new Date(dt + 'T12:00:00')) / 86400000;
+    return diff < periodo;
+  });
+}
+
+function estatPorCampo(datas, campo, d) {
+  const vals = datas.map(dt => d[dt][campo]).filter(v => v !== null && v !== undefined);
+  if (!vals.length) return null;
+  const n    = vals.length;
+  const med  = vals.reduce((a,b) => a+b, 0) / n;
+  const dp   = Math.sqrt(vals.reduce((a,v) => a + (v-med)**2, 0) / n);
+  const cv   = med > 0 ? (dp / med) * 100 : 0;
+  const min  = Math.min(...vals);
+  const max  = Math.max(...vals);
+  return { n, med: med.toFixed(1), dp: dp.toFixed(1), cv: cv.toFixed(1), min, max };
+}
+
+function corGlicemia(v) {
+  if (v < 70)  return 'rgba(255,193,7,0.8)';
+  if (v > 180) return 'rgba(220,53,69,0.8)';
+  return 'rgba(40,167,69,0.8)';
+}
+
+function gerarAnalise() {
+  const datas = datasAnalise();
+  const d = dados();
+
+  if (datas.length === 0) {
+    ['analise-stats','analise-regressao'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '<p style="color:var(--cinza);text-align:center;padding:16px">Nenhum dado no período selecionado.</p>';
+    });
+    return;
+  }
+
+  const labels = datas.map(dt => formatarData(dt));
+
+  // — Gráfico 1: Evolução da glicemia —
+  destruirChart('evolucao');
+  const ctxEv = document.getElementById('chart-evolucao')?.getContext('2d');
+  if (ctxEv) {
+    const campos = [
+      { campo: 'jejum_glicemia',      label: 'Jejum',       cor: '#1a6fbe' },
+      { campo: 'pre_almoco_glicemia', label: 'Pré-Almoço',  cor: '#fd7e14' },
+      { campo: 'pos_almoco_glicemia', label: '2h Almoço',   cor: '#28a745' },
+      { campo: 'pre_jantar_glicemia', label: 'Pré-Jantar',  cor: '#6f42c1' },
+      { campo: 'pos_jantar_glicemia', label: '2h Jantar',   cor: '#e83e8c' },
+    ];
+    _charts['evolucao'] = new Chart(ctxEv, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: campos.map(c => ({
+          label: c.label,
+          data: datas.map(dt => d[dt][c.campo] ?? null),
+          borderColor: c.cor,
+          backgroundColor: c.cor + '22',
+          tension: 0.3,
+          spanGaps: true,
+          pointRadius: 3,
+          borderWidth: 2,
+        }))
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+        scales: {
+          y: { title: { display: true, text: 'mg/dL' },
+               min: 40,
+               grid: { color: 'rgba(0,0,0,0.06)' } },
+          x: { ticks: { maxRotation: 45, font: { size: 10 } } }
+        }
+      }
+    });
+  }
+
+  // — Gráfico 2: Média por horário (transversal) —
+  destruirChart('horarios');
+  const ctxH = document.getElementById('chart-horarios')?.getContext('2d');
+  if (ctxH) {
+    const horarios = [
+      { campo: 'jejum_glicemia',      label: 'Jejum',       alvoMin: 70,  alvoMax: 99  },
+      { campo: 'pre_almoco_glicemia', label: 'Pré-Almoço',  alvoMin: 80,  alvoMax: 130 },
+      { campo: 'pos_almoco_glicemia', label: '2h Almoço',   alvoMin: 0,   alvoMax: 180 },
+      { campo: 'pre_jantar_glicemia', label: 'Pré-Jantar',  alvoMin: 80,  alvoMax: 130 },
+      { campo: 'pos_jantar_glicemia', label: '2h Jantar',   alvoMin: 0,   alvoMax: 180 },
+    ];
+    const medias  = horarios.map(h => {
+      const vals = datas.map(dt => d[dt][h.campo]).filter(v => v != null);
+      return vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
+    });
+    const cores = medias.map((v,i) => v == null ? '#ccc' : (v < 70 ? '#ffc107' : (v > horarios[i].alvoMax ? '#dc3545' : '#28a745')));
+    _charts['horarios'] = new Chart(ctxH, {
+      type: 'bar',
+      data: {
+        labels: horarios.map(h => h.label),
+        datasets: [{
+          label: 'Média (mg/dL)',
+          data: medias,
+          backgroundColor: cores,
+          borderRadius: 6,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.raw} mg/dL` } } },
+        scales: {
+          y: { title: { display: true, text: 'mg/dL' }, grid: { color: 'rgba(0,0,0,0.06)' } }
+        }
+      }
+    });
+  }
+
+  // — Gráfico 3: Insulina por dia —
+  destruirChart('insulina');
+  const ctxI = document.getElementById('chart-insulina')?.getContext('2d');
+  if (ctxI) {
+    _charts['insulina'] = new Chart(ctxI, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Insulina Rápida (U)',
+          data: datas.map(dt => d[dt].total_insulina_rapida ?? null),
+          backgroundColor: '#1a6fbe99',
+          borderColor: '#1a6fbe',
+          borderWidth: 1,
+          borderRadius: 4,
+        }, {
+          label: 'Insulina Lenta (U)',
+          data: datas.map(dt => d[dt].insulina_lenta ?? null),
+          backgroundColor: '#6f42c199',
+          borderColor: '#6f42c1',
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+        scales: {
+          x: { stacked: false, ticks: { maxRotation: 45, font: { size: 10 } } },
+          y: { title: { display: true, text: 'Unidades (U)' }, grid: { color: 'rgba(0,0,0,0.06)' } }
+        }
+      }
+    });
+  }
+
+  // — Tabela estatística —
+  const medicoes = [
+    { campo: 'jejum_glicemia',      label: '🌅 Jejum',       alvoMax: 99  },
+    { campo: 'pre_almoco_glicemia', label: '☀️ Pré-Almoço',  alvoMax: 130 },
+    { campo: 'pos_almoco_glicemia', label: '🕑 2h Almoço',   alvoMax: 180 },
+    { campo: 'pre_jantar_glicemia', label: '🌆 Pré-Jantar',  alvoMax: 130 },
+    { campo: 'pos_jantar_glicemia', label: '🌙 2h Jantar',   alvoMax: 180 },
+  ];
+  const statsEl = document.getElementById('analise-stats');
+  if (statsEl) {
+    const linhas = medicoes.map(m => {
+      const e = estatPorCampo(datas, m.campo, d);
+      if (!e) return `<tr><td>${m.label}</td><td colspan="6" style="color:var(--cinza);text-align:center">Sem dados</td></tr>`;
+      const vals = datas.map(dt => d[dt][m.campo]).filter(v => v != null);
+      const noAlvo = vals.filter(v => v >= 70 && v <= m.alvoMax).length;
+      const pct = ((noAlvo / vals.length) * 100).toFixed(0);
+      const corMed = parseFloat(e.med) > m.alvoMax ? 'color:var(--vermelho)' : parseFloat(e.med) < 70 ? 'color:var(--amarelo)' : 'color:var(--verde)';
+      return `<tr>
+        <td>${m.label}</td>
+        <td style="${corMed};font-weight:bold">${e.med}</td>
+        <td>${e.dp}</td>
+        <td>${e.cv}%</td>
+        <td>${e.min}</td>
+        <td>${e.max}</td>
+        <td style="font-weight:bold;color:${pct>=70?'var(--verde)':'var(--vermelho)'}">${pct}%</td>
+      </tr>`;
+    }).join('');
+    statsEl.innerHTML = `
+      <div class="tabela-wrapper">
+        <table style="font-size:0.8rem">
+          <thead><tr>
+            <th>Medição</th><th>Média<br>(mg/dL)</th><th>DP<br>(mg/dL)</th>
+            <th>CV%</th><th>Mín</th><th>Máx</th><th>% no Alvo</th>
+          </tr></thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>
+      <p style="font-size:0.75rem;color:var(--cinza);margin-top:8px">
+        DP = Desvio Padrão &nbsp;|&nbsp; CV% = Coeficiente de Variação &nbsp;|&nbsp; % no Alvo = dentro dos limites de referência
+      </p>`;
+  }
+
+  // — Gráfico 4 + Regressão linear (jejum) —
+  const pontosJejum = datas
+    .map((dt, i) => ({ x: i, y: d[dt].jejum_glicemia, label: formatarData(dt) }))
+    .filter(p => p.y != null);
+
+  destruirChart('regressao');
+  const ctxR = document.getElementById('chart-regressao')?.getContext('2d');
+  const reg = pontosJejum.length >= 2 ? regressaoLinear(pontosJejum) : null;
+
+  if (ctxR && pontosJejum.length > 0) {
+    const trendData = reg
+      ? pontosJejum.map(p => ({ x: p.label, y: parseFloat((reg.a * p.x + reg.b).toFixed(1)) }))
+      : [];
+    _charts['regressao'] = new Chart(ctxR, {
+      type: 'scatter',
+      data: {
+        datasets: [{
+          label: 'Glicemia Jejum (mg/dL)',
+          data: pontosJejum.map(p => ({ x: p.label, y: p.y })),
+          backgroundColor: pontosJejum.map(p => corGlicemia(p.y)),
+          pointRadius: 5,
+        }, ...(reg ? [{
+          label: 'Tendência (regressão)',
+          data: trendData,
+          type: 'line',
+          borderColor: '#dc3545',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0,
+        }] : [])]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+        scales: {
+          x: { type: 'category', ticks: { maxRotation: 45, font: { size: 10 } } },
+          y: { title: { display: true, text: 'mg/dL' }, min: 40, grid: { color: 'rgba(0,0,0,0.06)' } }
+        }
+      }
+    });
+  }
+
+  const regEl = document.getElementById('analise-regressao');
+  if (regEl && reg) {
+    const tendencia = reg.a > 0.5 ? '↗ tendência de alta' : reg.a < -0.5 ? '↘ tendência de queda' : '➡ glicemia estável';
+    const corTend   = reg.a > 0.5 ? 'var(--vermelho)' : reg.a < -0.5 ? 'var(--verde)' : 'var(--azul)';
+    regEl.innerHTML = `
+      <div style="background:var(--azul-claro);border-radius:10px;padding:14px;font-size:0.88rem">
+        <p><strong>Equação:</strong> y = ${reg.a.toFixed(2)}x + ${reg.b.toFixed(1)} mg/dL</p>
+        <p style="margin-top:6px"><strong>R² =</strong> ${reg.r2.toFixed(3)} &nbsp;
+          <span style="color:var(--cinza);font-size:0.8rem">(${reg.r2 >= 0.7 ? 'ajuste forte' : reg.r2 >= 0.4 ? 'ajuste moderado' : 'ajuste fraco'})</span></p>
+        <p style="margin-top:6px"><strong>Variação diária:</strong> ${Math.abs(reg.a).toFixed(2)} mg/dL/dia</p>
+        <p style="margin-top:8px;font-size:1rem;font-weight:bold;color:${corTend}">${tendencia}</p>
+        <p style="margin-top:6px;font-size:0.75rem;color:var(--cinza)">
+          x = índice do dia no período &nbsp;|&nbsp; y = glicemia em jejum estimada &nbsp;|&nbsp; ${pontosJejum.length} medições analisadas
+        </p>
+      </div>`;
+  } else if (regEl) {
+    regEl.innerHTML = '<p style="color:var(--cinza);font-size:0.85rem">São necessários ao menos 2 registros de jejum para calcular a regressão.</p>';
+  }
 }
 
 // INIT — sempre exige senha
