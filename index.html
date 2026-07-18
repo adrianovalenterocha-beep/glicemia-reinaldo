@@ -765,6 +765,11 @@
   </div>
 
   <div class="card">
+    <div class="card-titulo">🚦 Alertas e Adesão</div>
+    <div id="analise-alertas"></div>
+  </div>
+
+  <div class="card">
     <div class="card-titulo">📉 Evolução da Glicemia</div>
     <p style="font-size:0.8rem;color:var(--cinza);margin-bottom:10px">Valores diários por horário de medição + linha de tendência (jejum)</p>
     <div style="position:relative;height:260px"><canvas id="chart-evolucao"></canvas></div>
@@ -874,6 +879,29 @@
     <div id="msg-config" class="aviso-box" style="margin-top:4px"></div>
   </div>
 
+  <!-- METAS PERSONALIZADAS -->
+  <div class="card">
+    <div class="card-titulo">🎯 Metas de Glicemia</div>
+    <p style="font-size:0.85rem;color:var(--cinza);margin-bottom:14px">
+      Defina os alvos indicados pelo médico. Usados nos gráficos, no cálculo de "% no alvo" e nos alertas.
+    </p>
+    <div id="metas-campos"></div>
+    <div class="form-linha-cfg" style="margin-top:8px">
+      <div class="config-campo">
+        <label>Alerta de hipoglicemia — abaixo de (mg/dL)</label>
+        <input type="number" id="meta_hipo" placeholder="70" inputmode="numeric">
+      </div>
+      <div class="config-campo">
+        <label>Alerta de pico — acima de (mg/dL)</label>
+        <input type="number" id="meta_pico" placeholder="250" inputmode="numeric">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-azul" onclick="salvarMetas()">💾 Salvar metas</button>
+      <button class="btn" style="background:#6c757d;color:#fff" onclick="restaurarMetasPadrao()">↺ Restaurar padrão</button>
+    </div>
+  </div>
+
   <!-- SENHA DO APP -->
   <div class="card">
     <div class="card-titulo">🔑 Senha de Acesso ao App</div>
@@ -913,10 +941,33 @@
 
 <!-- ===== EXPORTAR ===== -->
 <div class="pagina" id="pg-exportar">
+  <!-- GRUPO 1: RELATÓRIOS PDF -->
   <div class="card">
-    <div class="card-titulo">💾 Exportar Dados</div>
+    <div class="card-titulo">📄 Relatórios em PDF</div>
     <p style="margin-bottom:14px;font-size:0.9rem;color:var(--cinza)">
-      Exporte todos os registros acumulados para planilha Excel ou faça backup dos dados.
+      Gere relatórios prontos para levar na consulta ou enviar ao médico pelo WhatsApp.
+    </p>
+    <div class="semana-seletor">
+      <label style="font-size:0.85rem;color:var(--cinza);white-space:nowrap">Período:</label>
+      <select id="completo-periodo">
+        <option value="7">Últimos 7 dias</option>
+        <option value="14">Últimos 14 dias</option>
+        <option value="30" selected>Últimos 30 dias</option>
+        <option value="90">Últimos 90 dias</option>
+        <option value="0">Todos os dados</option>
+      </select>
+    </div>
+    <button class="btn btn-azul" style="margin-top:4px" onclick="gerarPDFCompleto()">📑 Relatório Completo (análise + histórico)</button>
+    <p style="font-size:0.78rem;color:var(--cinza);margin-top:8px;line-height:1.5">
+      O <strong>Relatório Completo</strong> reúne num único PDF: resumo, alertas, os 4 gráficos, estatísticas, tendência e a tabela com todos os registros do período.
+    </p>
+  </div>
+
+  <!-- GRUPO 2: DADOS E BACKUP -->
+  <div class="card">
+    <div class="card-titulo">💾 Dados e Backup</div>
+    <p style="margin-bottom:14px;font-size:0.9rem;color:var(--cinza)">
+      Exporte os registros em planilha Excel ou faça backup de segurança dos dados.
     </p>
     <button class="btn btn-verde" onclick="exportarExcel()">📊 Exportar Planilha Excel (todos os dados)</button>
     <button class="btn" style="margin-top:4px;background:#25D366;color:#fff" onclick="compartilharWhatsApp()">📤 Compartilhar Excel pelo WhatsApp</button>
@@ -1887,10 +1938,60 @@ function iniciarConfig() {
     if (el) el.value = med[f] || '';
   });
   renderContatosCfg();
+  renderMetasCampos();
   const gasEl = document.getElementById('gas_url');
   if (gasEl) gasEl.value = gasUrl();
   const statusEl = document.getElementById('gas-status');
   if (statusEl) statusEl.textContent = gasUrl() ? '🟢 URL configurada. App conectado ao Google Planilhas.' : '⚪ Não configurado. Insira a URL do Apps Script.';
+}
+
+function renderMetasCampos() {
+  const wrap = document.getElementById('metas-campos');
+  if (!wrap) return;
+  const m = metas();
+  wrap.innerHTML = MEDICOES.map(med => `
+    <div class="form-linha-cfg" style="align-items:flex-end">
+      <div class="config-campo" style="flex:2">
+        <label>${med.emoji} ${med.label} — alvo (mg/dL)</label>
+      </div>
+      <div class="config-campo">
+        <label style="font-size:0.75rem">Mínimo</label>
+        <input type="number" id="meta_${med.chave}_min" value="${m[med.chave].min}" inputmode="numeric">
+      </div>
+      <div class="config-campo">
+        <label style="font-size:0.75rem">Máximo</label>
+        <input type="number" id="meta_${med.chave}_max" value="${m[med.chave].max}" inputmode="numeric">
+      </div>
+    </div>`).join('');
+  document.getElementById('meta_hipo').value = m.hipo;
+  document.getElementById('meta_pico').value = m.pico;
+}
+
+function salvarMetas() {
+  const cfg = config();
+  const novas = {};
+  let erro = false;
+  MEDICOES.forEach(med => {
+    const min = parseFloat(document.getElementById(`meta_${med.chave}_min`).value);
+    const max = parseFloat(document.getElementById(`meta_${med.chave}_max`).value);
+    if (isNaN(min) || isNaN(max) || min > max) erro = true;
+    novas[med.chave] = { min, max };
+  });
+  const hipo = parseFloat(document.getElementById('meta_hipo').value);
+  const pico = parseFloat(document.getElementById('meta_pico').value);
+  if (erro || isNaN(hipo) || isNaN(pico)) { toast('⚠️ Verifique os valores: mínimo não pode ser maior que máximo.', true); return; }
+  novas.hipo = hipo; novas.pico = pico;
+  cfg.metas = novas;
+  salvarConfig(cfg);
+  toast('✅ Metas salvas com sucesso!');
+}
+
+function restaurarMetasPadrao() {
+  const cfg = config();
+  delete cfg.metas;
+  salvarConfig(cfg);
+  renderMetasCampos();
+  toast('↺ Metas restauradas para o padrão de referência.');
 }
 
 function salvarMedico() {
@@ -2067,9 +2168,259 @@ function estatPorCampo(datas, campo, d) {
 }
 
 function corGlicemia(v) {
-  if (v < 70)  return 'rgba(255,193,7,0.8)';
-  if (v > 180) return 'rgba(220,53,69,0.8)';
+  const m = metas();
+  if (v < m.hipo)  return 'rgba(255,193,7,0.8)';
+  if (v > m.pico)  return 'rgba(220,53,69,0.8)';
   return 'rgba(40,167,69,0.8)';
+}
+
+// ===== METAS PERSONALIZADAS =====
+const METAS_PADRAO = {
+  jejum:      { min: 70, max: 99  },
+  pre_almoco: { min: 80, max: 130 },
+  pos_almoco: { min: 0,  max: 180 },
+  pre_jantar: { min: 80, max: 130 },
+  pos_jantar: { min: 0,  max: 180 },
+  hipo: 70,
+  pico: 250,
+};
+
+function metas() {
+  const salvas = config().metas || {};
+  const m = JSON.parse(JSON.stringify(METAS_PADRAO));
+  ['jejum','pre_almoco','pos_almoco','pre_jantar','pos_jantar'].forEach(k => {
+    if (salvas[k]) {
+      if (salvas[k].min != null) m[k].min = salvas[k].min;
+      if (salvas[k].max != null) m[k].max = salvas[k].max;
+    }
+  });
+  if (salvas.hipo != null) m.hipo = salvas.hipo;
+  if (salvas.pico != null) m.pico = salvas.pico;
+  return m;
+}
+
+// Configuração canônica das 5 medições
+const MEDICOES = [
+  { campo: 'jejum_glicemia',      chave: 'jejum',      label: 'Jejum',      emoji: '🌅', cor: '#1a6fbe' },
+  { campo: 'pre_almoco_glicemia', chave: 'pre_almoco', label: 'Pré-Almoço', emoji: '☀️', cor: '#fd7e14' },
+  { campo: 'pos_almoco_glicemia', chave: 'pos_almoco', label: '2h Almoço',  emoji: '🕑', cor: '#28a745' },
+  { campo: 'pre_jantar_glicemia', chave: 'pre_jantar', label: 'Pré-Jantar', emoji: '🌆', cor: '#6f42c1' },
+  { campo: 'pos_jantar_glicemia', chave: 'pos_jantar', label: '2h Jantar',  emoji: '🌙', cor: '#e83e8c' },
+];
+
+function noAlvo(campoChave, valor) {
+  const m = metas()[campoChave];
+  if (!m) return false;
+  return valor >= m.min && valor <= m.max;
+}
+
+// ===== ALERTAS E ADESÃO =====
+function analisarAlertas(datas, d) {
+  const m = metas();
+  const hipos = [], picos = [];
+  datas.forEach(dt => {
+    MEDICOES.forEach(med => {
+      const v = d[dt][med.campo];
+      if (v == null) return;
+      if (v < m.hipo) hipos.push({ dt, label: med.label, v });
+      if (v > m.pico) picos.push({ dt, label: med.label, v });
+    });
+  });
+  return { hipos, picos };
+}
+
+function calcularAdesao(datas, d) {
+  let feitas = 0;
+  const esperadas = datas.length * 5;
+  datas.forEach(dt => {
+    MEDICOES.forEach(med => { if (d[dt][med.campo] != null) feitas++; });
+  });
+  const pct = esperadas > 0 ? Math.round((feitas / esperadas) * 100) : 0;
+  return { feitas, esperadas, pct };
+}
+
+// ===== CONSTRUTORES DE GRÁFICOS (reutilizados na tela e no PDF) =====
+function cfgEvolucao(datas, d) {
+  const labels = datas.map(dt => formatarData(dt));
+  return {
+    type: 'line',
+    data: {
+      labels,
+      datasets: MEDICOES.map(c => ({
+        label: c.label,
+        data: datas.map(dt => d[dt][c.campo] ?? null),
+        borderColor: c.cor,
+        backgroundColor: c.cor + '22',
+        tension: 0.3, spanGaps: true, pointRadius: 3, borderWidth: 2,
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      scales: {
+        y: { title: { display: true, text: 'mg/dL' }, min: 40, grid: { color: 'rgba(0,0,0,0.06)' } },
+        x: { ticks: { maxRotation: 45, font: { size: 10 } } }
+      }
+    }
+  };
+}
+
+function cfgHorarios(datas, d) {
+  const m = metas();
+  const medias = MEDICOES.map(h => {
+    const vals = datas.map(dt => d[dt][h.campo]).filter(v => v != null);
+    return vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
+  });
+  const cores = medias.map((v,i) => {
+    if (v == null) return '#ccc';
+    const mt = m[MEDICOES[i].chave];
+    return v < mt.min ? '#ffc107' : (v > mt.max ? '#dc3545' : '#28a745');
+  });
+  return {
+    type: 'bar',
+    data: { labels: MEDICOES.map(h => h.label), datasets: [{ label: 'Média (mg/dL)', data: medias, backgroundColor: cores, borderRadius: 6 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} mg/dL` } } },
+      scales: { y: { title: { display: true, text: 'mg/dL' }, grid: { color: 'rgba(0,0,0,0.06)' } } }
+    }
+  };
+}
+
+function cfgInsulina(datas, d) {
+  const labels = datas.map(dt => formatarData(dt));
+  return {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Insulina Rápida (U)', data: datas.map(dt => d[dt].total_insulina_rapida ?? null), backgroundColor: '#1a6fbe99', borderColor: '#1a6fbe', borderWidth: 1, borderRadius: 4 },
+        { label: 'Insulina Lenta (U)',  data: datas.map(dt => d[dt].insulina_lenta ?? null),        backgroundColor: '#6f42c199', borderColor: '#6f42c1', borderWidth: 1, borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      scales: { x: { ticks: { maxRotation: 45, font: { size: 10 } } }, y: { title: { display: true, text: 'Unidades (U)' }, grid: { color: 'rgba(0,0,0,0.06)' } } }
+    }
+  };
+}
+
+function cfgRegressao(datas, d) {
+  const pontos = datas.map((dt,i) => ({ x:i, y:d[dt].jejum_glicemia, label:formatarData(dt) })).filter(p => p.y != null);
+  const reg = pontos.length >= 2 ? regressaoLinear(pontos) : null;
+  const trend = reg ? pontos.map(p => ({ x: p.label, y: parseFloat((reg.a*p.x+reg.b).toFixed(1)) })) : [];
+  return {
+    cfg: {
+      type: 'scatter',
+      data: {
+        datasets: [
+          { label: 'Glicemia Jejum (mg/dL)', data: pontos.map(p => ({ x:p.label, y:p.y })), backgroundColor: pontos.map(p => corGlicemia(p.y)), pointRadius: 5 },
+          ...(reg ? [{ label: 'Tendência (regressão)', data: trend, type: 'line', borderColor: '#dc3545', borderWidth: 2, pointRadius: 0, tension: 0 }] : [])
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+        scales: { x: { type: 'category', ticks: { maxRotation: 45, font: { size: 10 } } }, y: { title: { display: true, text: 'mg/dL' }, min: 40, grid: { color: 'rgba(0,0,0,0.06)' } } }
+      }
+    },
+    reg, nPontos: pontos.length
+  };
+}
+
+// Renderiza um gráfico em canvas offscreen e devolve imagem PNG base64 (para PDF em qualquer aba)
+function renderChartOffscreen(cfg, largura, altura) {
+  const canvas = document.createElement('canvas');
+  canvas.width = largura; canvas.height = altura;
+  canvas.style.position = 'fixed'; canvas.style.left = '-99999px'; canvas.style.top = '0';
+  document.body.appendChild(canvas);
+  const cfg2 = JSON.parse(JSON.stringify(cfg));
+  // funções (callbacks/tooltip) se perdem no clone — não são necessárias para captura estática
+  cfg2.options = cfg2.options || {};
+  cfg2.options.responsive = false;
+  cfg2.options.maintainAspectRatio = false;
+  cfg2.options.animation = false;
+  cfg2.options.devicePixelRatio = 2;
+  const chart = new Chart(canvas.getContext('2d'), cfg2);
+  const img = chart.toBase64Image('image/png', 1);
+  chart.destroy();
+  document.body.removeChild(canvas);
+  return img;
+}
+
+// Tabela de estatísticas (HTML) — reutilizada na tela
+function tabelaEstatisticasHTML(datas, d) {
+  const m = metas();
+  const linhas = MEDICOES.map(med => {
+    const e = estatPorCampo(datas, med.campo, d);
+    if (!e) return `<tr><td>${med.emoji} ${med.label}</td><td colspan="6" style="color:var(--cinza);text-align:center">Sem dados</td></tr>`;
+    const vals = datas.map(dt => d[dt][med.campo]).filter(v => v != null);
+    const dentro = vals.filter(v => noAlvo(med.chave, v)).length;
+    const pct = ((dentro / vals.length) * 100).toFixed(0);
+    const mt = m[med.chave];
+    const corMed = parseFloat(e.med) > mt.max ? 'color:var(--vermelho)' : parseFloat(e.med) < mt.min ? 'color:var(--amarelo)' : 'color:var(--verde)';
+    return `<tr>
+      <td>${med.emoji} ${med.label}</td>
+      <td style="${corMed};font-weight:bold">${e.med}</td>
+      <td>${e.dp}</td>
+      <td>${e.cv}%</td>
+      <td>${e.min}</td>
+      <td>${e.max}</td>
+      <td style="font-weight:bold;color:${pct>=70?'var(--verde)':'var(--vermelho)'}">${pct}%</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="tabela-wrapper">
+      <table style="font-size:0.8rem">
+        <thead><tr>
+          <th>Medição</th><th>Média<br>(mg/dL)</th><th>DP<br>(mg/dL)</th>
+          <th>CV%</th><th>Mín</th><th>Máx</th><th>% no Alvo</th>
+        </tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+    <p style="font-size:0.75rem;color:var(--cinza);margin-top:8px">
+      DP = Desvio Padrão &nbsp;|&nbsp; CV% = Coeficiente de Variação &nbsp;|&nbsp; % no Alvo = dentro das metas definidas
+    </p>`;
+}
+
+// Painel de alertas e adesão na tela
+function renderAlertasAdesao(datas, d) {
+  const el = document.getElementById('analise-alertas');
+  if (!el) return;
+  const { hipos, picos } = analisarAlertas(datas, d);
+  const ad = calcularAdesao(datas, d);
+  const corAd = ad.pct >= 80 ? 'var(--verde)' : ad.pct >= 50 ? 'var(--laranja)' : 'var(--vermelho)';
+
+  let html = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <div style="flex:1;min-width:120px;background:var(--azul-claro);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:bold;color:${corAd}">${ad.pct}%</div>
+        <div style="font-size:0.75rem;color:var(--cinza)">Adesão às medições<br>(${ad.feitas} de ${ad.esperadas})</div>
+      </div>
+      <div style="flex:1;min-width:120px;background:${hipos.length?'#fff8e1':'var(--verde-claro)'};border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:bold;color:${hipos.length?'#c88200':'var(--verde)'}">${hipos.length}</div>
+        <div style="font-size:0.75rem;color:var(--cinza)">Episódios de hipoglicemia<br>(&lt; ${metas().hipo} mg/dL)</div>
+      </div>
+      <div style="flex:1;min-width:120px;background:${picos.length?'#fdecea':'var(--verde-claro)'};border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:bold;color:${picos.length?'var(--vermelho)':'var(--verde)'}">${picos.length}</div>
+        <div style="font-size:0.75rem;color:var(--cinza)">Picos elevados<br>(&gt; ${metas().pico} mg/dL)</div>
+      </div>
+    </div>`;
+
+  const listar = (arr, cor, titulo) => {
+    if (!arr.length) return '';
+    const itens = arr.slice(0, 8).map(a => `<li>${diaSemanaAbrev(a.dt)} ${formatarData(a.dt)} — <strong>${a.label}</strong>: ${a.v} mg/dL</li>`).join('');
+    const extra = arr.length > 8 ? `<li style="color:var(--cinza)">... e mais ${arr.length - 8}</li>` : '';
+    return `<div style="margin-top:6px"><strong style="color:${cor};font-size:0.85rem">${titulo}</strong><ul style="font-size:0.82rem;margin:4px 0 0 18px;line-height:1.6">${itens}${extra}</ul></div>`;
+  };
+  html += listar(hipos, '#c88200', '⚠️ Hipoglicemias detectadas');
+  html += listar(picos, 'var(--vermelho)', '🔴 Picos detectados');
+  if (!hipos.length && !picos.length) {
+    html += `<p style="font-size:0.85rem;color:var(--verde);text-align:center;margin-top:4px">✅ Nenhum episódio crítico no período.</p>`;
+  }
+  el.innerHTML = html;
 }
 
 function gerarAnalise() {
@@ -2077,211 +2428,43 @@ function gerarAnalise() {
   const d = dados();
 
   if (datas.length === 0) {
-    ['analise-stats','analise-regressao'].forEach(id => {
+    ['analise-alertas','analise-stats','analise-regressao'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = '<p style="color:var(--cinza);text-align:center;padding:16px">Nenhum dado no período selecionado.</p>';
     });
+    ['evolucao','horarios','insulina','regressao'].forEach(destruirChart);
     return;
   }
 
-  const labels = datas.map(dt => formatarData(dt));
+  // Painel de alertas e adesão
+  renderAlertasAdesao(datas, d);
 
-  // — Gráfico 1: Evolução da glicemia —
+  // — Gráfico 1: Evolução —
   destruirChart('evolucao');
   const ctxEv = document.getElementById('chart-evolucao')?.getContext('2d');
-  if (ctxEv) {
-    const campos = [
-      { campo: 'jejum_glicemia',      label: 'Jejum',       cor: '#1a6fbe' },
-      { campo: 'pre_almoco_glicemia', label: 'Pré-Almoço',  cor: '#fd7e14' },
-      { campo: 'pos_almoco_glicemia', label: '2h Almoço',   cor: '#28a745' },
-      { campo: 'pre_jantar_glicemia', label: 'Pré-Jantar',  cor: '#6f42c1' },
-      { campo: 'pos_jantar_glicemia', label: '2h Jantar',   cor: '#e83e8c' },
-    ];
-    _charts['evolucao'] = new Chart(ctxEv, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: campos.map(c => ({
-          label: c.label,
-          data: datas.map(dt => d[dt][c.campo] ?? null),
-          borderColor: c.cor,
-          backgroundColor: c.cor + '22',
-          tension: 0.3,
-          spanGaps: true,
-          pointRadius: 3,
-          borderWidth: 2,
-        }))
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
-        scales: {
-          y: { title: { display: true, text: 'mg/dL' },
-               min: 40,
-               grid: { color: 'rgba(0,0,0,0.06)' } },
-          x: { ticks: { maxRotation: 45, font: { size: 10 } } }
-        }
-      }
-    });
-  }
+  if (ctxEv) _charts['evolucao'] = new Chart(ctxEv, cfgEvolucao(datas, d));
 
-  // — Gráfico 2: Média por horário (transversal) —
+  // — Gráfico 2: Média por horário —
   destruirChart('horarios');
   const ctxH = document.getElementById('chart-horarios')?.getContext('2d');
-  if (ctxH) {
-    const horarios = [
-      { campo: 'jejum_glicemia',      label: 'Jejum',       alvoMin: 70,  alvoMax: 99  },
-      { campo: 'pre_almoco_glicemia', label: 'Pré-Almoço',  alvoMin: 80,  alvoMax: 130 },
-      { campo: 'pos_almoco_glicemia', label: '2h Almoço',   alvoMin: 0,   alvoMax: 180 },
-      { campo: 'pre_jantar_glicemia', label: 'Pré-Jantar',  alvoMin: 80,  alvoMax: 130 },
-      { campo: 'pos_jantar_glicemia', label: '2h Jantar',   alvoMin: 0,   alvoMax: 180 },
-    ];
-    const medias  = horarios.map(h => {
-      const vals = datas.map(dt => d[dt][h.campo]).filter(v => v != null);
-      return vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
-    });
-    const cores = medias.map((v,i) => v == null ? '#ccc' : (v < 70 ? '#ffc107' : (v > horarios[i].alvoMax ? '#dc3545' : '#28a745')));
-    _charts['horarios'] = new Chart(ctxH, {
-      type: 'bar',
-      data: {
-        labels: horarios.map(h => h.label),
-        datasets: [{
-          label: 'Média (mg/dL)',
-          data: medias,
-          backgroundColor: cores,
-          borderRadius: 6,
-        }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false },
-          tooltip: { callbacks: { label: ctx => ` ${ctx.raw} mg/dL` } } },
-        scales: {
-          y: { title: { display: true, text: 'mg/dL' }, grid: { color: 'rgba(0,0,0,0.06)' } }
-        }
-      }
-    });
-  }
+  if (ctxH) _charts['horarios'] = new Chart(ctxH, cfgHorarios(datas, d));
 
   // — Gráfico 3: Insulina por dia —
   destruirChart('insulina');
   const ctxI = document.getElementById('chart-insulina')?.getContext('2d');
-  if (ctxI) {
-    _charts['insulina'] = new Chart(ctxI, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Insulina Rápida (U)',
-          data: datas.map(dt => d[dt].total_insulina_rapida ?? null),
-          backgroundColor: '#1a6fbe99',
-          borderColor: '#1a6fbe',
-          borderWidth: 1,
-          borderRadius: 4,
-        }, {
-          label: 'Insulina Lenta (U)',
-          data: datas.map(dt => d[dt].insulina_lenta ?? null),
-          backgroundColor: '#6f42c199',
-          borderColor: '#6f42c1',
-          borderWidth: 1,
-          borderRadius: 4,
-        }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
-        scales: {
-          x: { stacked: false, ticks: { maxRotation: 45, font: { size: 10 } } },
-          y: { title: { display: true, text: 'Unidades (U)' }, grid: { color: 'rgba(0,0,0,0.06)' } }
-        }
-      }
-    });
-  }
+  if (ctxI) _charts['insulina'] = new Chart(ctxI, cfgInsulina(datas, d));
 
   // — Tabela estatística —
-  const medicoes = [
-    { campo: 'jejum_glicemia',      label: '🌅 Jejum',       alvoMax: 99  },
-    { campo: 'pre_almoco_glicemia', label: '☀️ Pré-Almoço',  alvoMax: 130 },
-    { campo: 'pos_almoco_glicemia', label: '🕑 2h Almoço',   alvoMax: 180 },
-    { campo: 'pre_jantar_glicemia', label: '🌆 Pré-Jantar',  alvoMax: 130 },
-    { campo: 'pos_jantar_glicemia', label: '🌙 2h Jantar',   alvoMax: 180 },
-  ];
   const statsEl = document.getElementById('analise-stats');
-  if (statsEl) {
-    const linhas = medicoes.map(m => {
-      const e = estatPorCampo(datas, m.campo, d);
-      if (!e) return `<tr><td>${m.label}</td><td colspan="6" style="color:var(--cinza);text-align:center">Sem dados</td></tr>`;
-      const vals = datas.map(dt => d[dt][m.campo]).filter(v => v != null);
-      const noAlvo = vals.filter(v => v >= 70 && v <= m.alvoMax).length;
-      const pct = ((noAlvo / vals.length) * 100).toFixed(0);
-      const corMed = parseFloat(e.med) > m.alvoMax ? 'color:var(--vermelho)' : parseFloat(e.med) < 70 ? 'color:var(--amarelo)' : 'color:var(--verde)';
-      return `<tr>
-        <td>${m.label}</td>
-        <td style="${corMed};font-weight:bold">${e.med}</td>
-        <td>${e.dp}</td>
-        <td>${e.cv}%</td>
-        <td>${e.min}</td>
-        <td>${e.max}</td>
-        <td style="font-weight:bold;color:${pct>=70?'var(--verde)':'var(--vermelho)'}">${pct}%</td>
-      </tr>`;
-    }).join('');
-    statsEl.innerHTML = `
-      <div class="tabela-wrapper">
-        <table style="font-size:0.8rem">
-          <thead><tr>
-            <th>Medição</th><th>Média<br>(mg/dL)</th><th>DP<br>(mg/dL)</th>
-            <th>CV%</th><th>Mín</th><th>Máx</th><th>% no Alvo</th>
-          </tr></thead>
-          <tbody>${linhas}</tbody>
-        </table>
-      </div>
-      <p style="font-size:0.75rem;color:var(--cinza);margin-top:8px">
-        DP = Desvio Padrão &nbsp;|&nbsp; CV% = Coeficiente de Variação &nbsp;|&nbsp; % no Alvo = dentro dos limites de referência
-      </p>`;
-  }
+  if (statsEl) statsEl.innerHTML = tabelaEstatisticasHTML(datas, d);
 
   // — Gráfico 4 + Regressão linear (jejum) —
-  const pontosJejum = datas
-    .map((dt, i) => ({ x: i, y: d[dt].jejum_glicemia, label: formatarData(dt) }))
-    .filter(p => p.y != null);
-
+  const { cfg: cfgReg, reg, nPontos } = cfgRegressao(datas, d);
   destruirChart('regressao');
   const ctxR = document.getElementById('chart-regressao')?.getContext('2d');
-  const reg = pontosJejum.length >= 2 ? regressaoLinear(pontosJejum) : null;
+  if (ctxR && nPontos > 0) _charts['regressao'] = new Chart(ctxR, cfgReg);
 
-  if (ctxR && pontosJejum.length > 0) {
-    const trendData = reg
-      ? pontosJejum.map(p => ({ x: p.label, y: parseFloat((reg.a * p.x + reg.b).toFixed(1)) }))
-      : [];
-    _charts['regressao'] = new Chart(ctxR, {
-      type: 'scatter',
-      data: {
-        datasets: [{
-          label: 'Glicemia Jejum (mg/dL)',
-          data: pontosJejum.map(p => ({ x: p.label, y: p.y })),
-          backgroundColor: pontosJejum.map(p => corGlicemia(p.y)),
-          pointRadius: 5,
-        }, ...(reg ? [{
-          label: 'Tendência (regressão)',
-          data: trendData,
-          type: 'line',
-          borderColor: '#dc3545',
-          borderWidth: 2,
-          pointRadius: 0,
-          tension: 0,
-        }] : [])]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
-        scales: {
-          x: { type: 'category', ticks: { maxRotation: 45, font: { size: 10 } } },
-          y: { title: { display: true, text: 'mg/dL' }, min: 40, grid: { color: 'rgba(0,0,0,0.06)' } }
-        }
-      }
-    });
-  }
-
+  const pontosJejum = { length: nPontos };
   const regEl = document.getElementById('analise-regressao');
   if (regEl && reg) {
     const tendencia = reg.a > 0.5 ? '↗ tendência de alta' : reg.a < -0.5 ? '↘ tendência de queda' : '➡ glicemia estável';
@@ -2302,7 +2485,7 @@ function gerarAnalise() {
   }
 }
 
-// ===== PDF DA ANÁLISE =====
+// ===== PDF: infraestrutura compartilhada =====
 
 function rotuloPeriodoAnalise() {
   const sel = document.getElementById('analise-periodo');
@@ -2312,45 +2495,58 @@ function rotuloPeriodoAnalise() {
   return `${txt} (${formatarData(datas[0])} a ${formatarData(datas[datas.length-1])})`;
 }
 
-function gerarPDFAnalise() {
-  const datas = datasAnalise();
-  if (datas.length === 0) { toast('⚠️ Nenhum dado no período para exportar!', true); return; }
-
-  // Recria os gráficos SEM animação, para captura nítida e imediata
-  const animAntes = Chart.defaults.animation;
-  Chart.defaults.animation = false;
-  gerarAnalise();
-  Chart.defaults.animation = animAntes;
-
-  toast('⏳ Gerando PDF da análise...');
-  setTimeout(() => {
-    try {
-      montarPDFAnalise(datas);
-    } catch (e) {
-      toast('⚠️ Erro ao gerar PDF: ' + e.message, true);
-    }
-  }, 300);
-}
-
-function montarPDFAnalise(datas) {
-  const d = dados();
+// Contexto de layout do PDF: guarda doc, posição y e utilitários
+function novoPDF() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const pageW = 210, pageH = 297, margem = 15, usableW = pageW - margem * 2;
-  let y = margem;
+  return { doc, pageW: 210, pageH: 297, margem: 15, usableW: 180, y: 15 };
+}
 
-  // Cabeçalho
+function pdfCabecalho(ctx, titulo, subtitulo) {
+  const { doc, pageW } = ctx;
   doc.setFillColor(26,111,190);
   doc.rect(0, 0, pageW, 26, 'F');
   doc.setTextColor(255,255,255);
   doc.setFontSize(16); doc.setFont(undefined, 'bold');
-  doc.text('Análise Detalhada de Glicemia', pageW/2, 12, { align: 'center' });
+  doc.text(titulo, pageW/2, 12, { align: 'center' });
   doc.setFontSize(10); doc.setFont(undefined, 'normal');
   doc.text('Paciente: Reinaldo O. Rocha', pageW/2, 19, { align: 'center' });
-  y = 32;
+  ctx.y = 32;
   doc.setTextColor(90,90,90); doc.setFontSize(9);
-  doc.text(`Período: ${rotuloPeriodoAnalise()}`, pageW/2, y, { align: 'center' });
-  y += 8;
+  doc.text(subtitulo, pageW/2, ctx.y, { align: 'center' });
+  ctx.y += 8;
+}
+
+function pdfQuebraSePreciso(ctx, alturaNecessaria) {
+  if (ctx.y + alturaNecessaria > ctx.pageH - ctx.margem) { ctx.doc.addPage(); ctx.y = ctx.margem; }
+}
+
+function pdfGrafico(ctx, imgBase64, titulo, alturaImg) {
+  const { doc, margem, usableW } = ctx;
+  pdfQuebraSePreciso(ctx, alturaImg + (titulo ? 6 : 0) + 4);
+  if (titulo) {
+    doc.setTextColor(26,111,190); doc.setFontSize(11); doc.setFont(undefined, 'bold');
+    doc.text(titulo, margem, ctx.y); ctx.y += 5;
+    doc.setFont(undefined, 'normal');
+  }
+  doc.addImage(imgBase64, 'PNG', margem, ctx.y, usableW, alturaImg);
+  ctx.y += alturaImg + 8;
+}
+
+function pdfRodape(ctx) {
+  const { doc, pageW, pageH } = ctx;
+  const totalPag = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= totalPag; p++) {
+    doc.setPage(p);
+    doc.setFontSize(7); doc.setTextColor(150,150,150);
+    doc.text('Normal (jejum): 70-99 mg/dL  |  Antes refeicoes: 80-130  |  2h apos: <180 mg/dL', pageW/2, pageH - 8, { align: 'center' });
+    doc.text(`Gerado em ${formatarData(hoje())}  -  Pagina ${p}/${totalPag}`, pageW/2, pageH - 4, { align: 'center' });
+  }
+}
+
+// Renderiza a seção de análise (resumo, alertas, gráficos, stats, regressão) no PDF
+function pdfSecaoAnalise(ctx, datas, d) {
+  const { doc, margem, usableW, pageW } = ctx;
 
   // Resumo geral
   const todasGlic = datas.flatMap(dt => {
@@ -2360,62 +2556,39 @@ function montarPDFAnalise(datas) {
   const media = todasGlic.length ? Math.round(todasGlic.reduce((a,b)=>a+b,0)/todasGlic.length) : '—';
   const max = todasGlic.length ? Math.max(...todasGlic) : '—';
   const min = todasGlic.length ? Math.min(...todasGlic) : '—';
+  const ad = calcularAdesao(datas, d);
+  const { hipos, picos } = analisarAlertas(datas, d);
+
   doc.setFillColor(232,242,251);
-  doc.roundedRect(margem, y, usableW, 12, 2, 2, 'F');
+  doc.roundedRect(margem, ctx.y, usableW, 18, 2, 2, 'F');
   doc.setTextColor(26,111,190); doc.setFontSize(10); doc.setFont(undefined, 'bold');
-  doc.text(`Média: ${media} mg/dL   |   Máximo: ${max} mg/dL   |   Mínimo: ${min} mg/dL   |   Dias: ${datas.length}`, pageW/2, y + 7.5, { align: 'center' });
-  doc.setFont(undefined, 'normal');
-  y += 18;
+  doc.text(`Media: ${media} mg/dL   |   Maximo: ${max} mg/dL   |   Minimo: ${min} mg/dL   |   Dias: ${datas.length}`, pageW/2, ctx.y + 7, { align: 'center' });
+  doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.setTextColor(60,60,60);
+  doc.text(`Adesao: ${ad.pct}% (${ad.feitas}/${ad.esperadas})   |   Hipoglicemias: ${hipos.length}   |   Picos: ${picos.length}`, pageW/2, ctx.y + 14, { align: 'center' });
+  ctx.y += 24;
 
-  // Função para adicionar um gráfico
-  const addGrafico = (chartId, titulo) => {
-    const chart = _charts[chartId];
-    if (!chart) return;
-    const img = chart.toBase64Image('image/png', 1);
-    const canvas = chart.canvas;
-    const ratio = canvas.height / canvas.width;
-    const imgW = usableW;
-    const imgH = imgW * ratio;
+  // Gráficos (renderizados offscreen — funcionam de qualquer aba)
+  pdfGrafico(ctx, renderChartOffscreen(cfgEvolucao(datas, d), 900, 380), 'Evolucao da Glicemia', usableW * 380/900);
+  pdfGrafico(ctx, renderChartOffscreen(cfgHorarios(datas, d), 900, 340), 'Media por Horario de Medicao', usableW * 340/900);
+  pdfGrafico(ctx, renderChartOffscreen(cfgInsulina(datas, d), 900, 320), 'Insulina por Dia', usableW * 320/900);
 
-    // Quebra de página se não couber (título + imagem)
-    if (y + imgH + 10 > pageH - margem) { doc.addPage(); y = margem; }
-
-    doc.setTextColor(26,111,190); doc.setFontSize(11); doc.setFont(undefined, 'bold');
-    doc.text(titulo, margem, y); y += 5;
-    doc.setFont(undefined, 'normal');
-    doc.addImage(img, 'PNG', margem, y, imgW, imgH);
-    y += imgH + 8;
-  };
-
-  addGrafico('evolucao', 'Evolução da Glicemia');
-  addGrafico('horarios', 'Média por Horário de Medição');
-  addGrafico('insulina', 'Insulina por Dia');
-
-  // Tabela estatística
-  const medicoes = [
-    { campo: 'jejum_glicemia',      label: 'Jejum',       alvoMax: 99  },
-    { campo: 'pre_almoco_glicemia', label: 'Pré-Almoço',  alvoMax: 130 },
-    { campo: 'pos_almoco_glicemia', label: '2h Almoço',   alvoMax: 180 },
-    { campo: 'pre_jantar_glicemia', label: 'Pré-Jantar',  alvoMax: 130 },
-    { campo: 'pos_jantar_glicemia', label: '2h Jantar',   alvoMax: 180 },
-  ];
-  const linhasStat = medicoes.map(m => {
-    const e = estatPorCampo(datas, m.campo, d);
-    if (!e) return [m.label, '—','—','—','—','—','—'];
-    const vals = datas.map(dt => d[dt][m.campo]).filter(v => v != null);
-    const noAlvo = vals.filter(v => v >= 70 && v <= m.alvoMax).length;
-    const pct = ((noAlvo / vals.length) * 100).toFixed(0) + '%';
-    return [m.label, e.med, e.dp, e.cv + '%', String(e.min), String(e.max), pct];
+  // Estatísticas
+  const m = metas();
+  const linhasStat = MEDICOES.map(med => {
+    const e = estatPorCampo(datas, med.campo, d);
+    if (!e) return [med.label, '—','—','—','—','—','—'];
+    const vals = datas.map(dt => d[dt][med.campo]).filter(v => v != null);
+    const dentro = vals.filter(v => noAlvo(med.chave, v)).length;
+    const pct = ((dentro / vals.length) * 100).toFixed(0) + '%';
+    return [med.label, e.med, e.dp, e.cv + '%', String(e.min), String(e.max), pct];
   });
-
-  if (y + 40 > pageH - margem) { doc.addPage(); y = margem; }
+  pdfQuebraSePreciso(ctx, 45);
   doc.setTextColor(26,111,190); doc.setFontSize(11); doc.setFont(undefined, 'bold');
-  doc.text('Estatísticas Detalhadas', margem, y); y += 3;
+  doc.text('Estatisticas Detalhadas', margem, ctx.y); ctx.y += 3;
   doc.setFont(undefined, 'normal');
-
   doc.autoTable({
-    startY: y + 2,
-    head: [['Medição','Média\n(mg/dL)','DP\n(mg/dL)','CV%','Mín','Máx','% Alvo']],
+    startY: ctx.y + 2,
+    head: [['Medicao','Media\n(mg/dL)','DP\n(mg/dL)','CV%','Min','Max','% Alvo']],
     body: linhasStat,
     theme: 'grid',
     headStyles: { fillColor: [26,111,190], textColor: 255, fontSize: 8, halign: 'center' },
@@ -2423,46 +2596,135 @@ function montarPDFAnalise(datas) {
     columnStyles: { 0: { halign: 'left', fontStyle: 'bold' } },
     margin: { left: margem, right: margem },
   });
-  y = doc.lastAutoTable.finalY + 8;
+  ctx.y = doc.lastAutoTable.finalY + 8;
 
   // Regressão
-  const pontosJejum = datas.map((dt,i) => ({ x:i, y:d[dt].jejum_glicemia })).filter(p => p.y != null);
-  const reg = pontosJejum.length >= 2 ? regressaoLinear(pontosJejum) : null;
-
-  if (y + 45 > pageH - margem) { doc.addPage(); y = margem; }
+  const { reg } = cfgRegressao(datas, d);
+  pdfQuebraSePreciso(ctx, 50);
   doc.setTextColor(26,111,190); doc.setFontSize(11); doc.setFont(undefined, 'bold');
-  doc.text('Análise de Regressão Linear (Jejum)', margem, y); y += 4;
+  doc.text('Analise de Regressao Linear (Jejum)', margem, ctx.y); ctx.y += 4;
   doc.setFont(undefined, 'normal');
-
-  addGrafico('regressao', '');
+  pdfGrafico(ctx, renderChartOffscreen(cfgRegressao(datas, d).cfg, 900, 340), '', usableW * 340/900);
 
   if (reg) {
     const tendencia = reg.a > 0.5 ? 'Tendencia de ALTA' : reg.a < -0.5 ? 'Tendencia de QUEDA' : 'Glicemia ESTAVEL';
     const ajuste = reg.r2 >= 0.7 ? 'ajuste forte' : reg.r2 >= 0.4 ? 'ajuste moderado' : 'ajuste fraco';
-    if (y + 32 > pageH - margem) { doc.addPage(); y = margem; }
+    pdfQuebraSePreciso(ctx, 32);
     doc.setFillColor(232,242,251);
-    doc.roundedRect(margem, y, usableW, 28, 2, 2, 'F');
+    doc.roundedRect(margem, ctx.y, usableW, 28, 2, 2, 'F');
     doc.setTextColor(40,40,40); doc.setFontSize(9);
-    doc.text(`Equacao:  y = ${reg.a.toFixed(2)}x + ${reg.b.toFixed(1)} mg/dL`, margem + 4, y + 7);
-    doc.text(`R2 = ${reg.r2.toFixed(3)}  (${ajuste})`, margem + 4, y + 13);
-    doc.text(`Variacao diaria: ${Math.abs(reg.a).toFixed(2)} mg/dL/dia`, margem + 4, y + 19);
+    doc.text(`Equacao:  y = ${reg.a.toFixed(2)}x + ${reg.b.toFixed(1)} mg/dL`, margem + 4, ctx.y + 7);
+    doc.text(`R2 = ${reg.r2.toFixed(3)}  (${ajuste})`, margem + 4, ctx.y + 13);
+    doc.text(`Variacao diaria: ${Math.abs(reg.a).toFixed(2)} mg/dL/dia`, margem + 4, ctx.y + 19);
     doc.setFont(undefined, 'bold'); doc.setTextColor(26,111,190);
-    doc.text(tendencia, margem + 4, y + 25);
+    doc.text(tendencia, margem + 4, ctx.y + 25);
     doc.setFont(undefined, 'normal');
-    y += 34;
+    ctx.y += 34;
   }
+}
 
-  // Rodapé em todas as páginas
-  const totalPag = doc.internal.getNumberOfPages();
-  for (let p = 1; p <= totalPag; p++) {
-    doc.setPage(p);
-    doc.setFontSize(7); doc.setTextColor(150,150,150);
-    doc.text('Normal (jejum): 70-99 mg/dL  |  Antes refeicoes: 80-130  |  2h apos: <180 mg/dL', pageW/2, pageH - 8, { align: 'center' });
-    doc.text(`Gerado em ${formatarData(hoje())}  -  Pagina ${p}/${totalPag}`, pageW/2, pageH - 4, { align: 'center' });
+// Renderiza a tabela histórica completa no PDF
+function pdfSecaoHistorico(ctx, datas, d) {
+  const { doc, margem } = ctx;
+  doc.addPage(); ctx.y = ctx.margem;
+  doc.setTextColor(26,111,190); doc.setFontSize(13); doc.setFont(undefined, 'bold');
+  doc.text('Registro Historico dos Dados', margem, ctx.y); ctx.y += 5;
+  doc.setFont(undefined, 'normal');
+
+  const vv = v => (v != null) ? String(v) : '-';
+  const linhas = datas.map(dt => {
+    const r = d[dt];
+    return [
+      `${diaSemanaAbrev(dt)} ${formatarData(dt)}`,
+      vv(r.jejum_glicemia), vv(r.jejum_insulina),
+      vv(r.pre_almoco_glicemia), vv(r.pre_almoco_insulina),
+      vv(r.pos_almoco_glicemia),
+      vv(r.pre_jantar_glicemia), vv(r.pre_jantar_insulina),
+      vv(r.pos_jantar_glicemia),
+      vv(r.total_insulina_rapida), vv(r.insulina_lenta), vv(r.ozivy)
+    ];
+  });
+
+  doc.autoTable({
+    startY: ctx.y + 2,
+    head: [['Data','Jej','InsJ','PreA','InsA','2hA','PreJ','InsJ','2hJ','TotR','Lenta','OZIVY']],
+    body: linhas,
+    theme: 'grid',
+    headStyles: { fillColor: [26,111,190], textColor: 255, fontSize: 7.5, halign: 'center' },
+    bodyStyles: { fontSize: 7.5, halign: 'center' },
+    columnStyles: { 0: { halign: 'left', cellWidth: 26 } },
+    margin: { left: margem, right: margem },
+    didParseCell: function(data) {
+      if (data.section === 'body' && [1,3,5,6,8].includes(data.column.index)) {
+        const val = parseFloat(data.cell.raw);
+        if (!isNaN(val)) {
+          if (val < metas().hipo) data.cell.styles.textColor = [200,130,0];
+          else if (val > metas().pico) data.cell.styles.textColor = [220,53,69];
+        }
+      }
+    }
+  });
+  ctx.y = doc.lastAutoTable.finalY + 6;
+
+  // Observações
+  const comObs = datas.filter(dt => d[dt].observacoes);
+  if (comObs.length) {
+    pdfQuebraSePreciso(ctx, 20);
+    doc.setTextColor(26,111,190); doc.setFontSize(11); doc.setFont(undefined, 'bold');
+    doc.text('Observacoes', margem, ctx.y); ctx.y += 6;
+    doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(60,60,60);
+    comObs.forEach(dt => {
+      const txt = `${diaSemanaAbrev(dt)} ${formatarData(dt)}: ${d[dt].observacoes}`;
+      const linhasTxt = doc.splitTextToSize(txt, ctx.usableW);
+      pdfQuebraSePreciso(ctx, linhasTxt.length * 4 + 2);
+      doc.text(linhasTxt, margem, ctx.y); ctx.y += linhasTxt.length * 4 + 2;
+    });
   }
+}
 
-  doc.save(`Analise_Glicemia_Reinaldo_${hoje()}.pdf`);
-  toast('✅ PDF da análise gerado com sucesso!');
+// ===== PDF DA ANÁLISE (só análise) =====
+function gerarPDFAnalise() {
+  const datas = datasAnalise();
+  if (datas.length === 0) { toast('⚠️ Nenhum dado no período para exportar!', true); return; }
+  toast('⏳ Gerando PDF da análise...');
+  setTimeout(() => {
+    try {
+      const d = dados();
+      const ctx = novoPDF();
+      pdfCabecalho(ctx, 'Analise Detalhada de Glicemia', `Periodo: ${rotuloPeriodoAnalise()}`);
+      pdfSecaoAnalise(ctx, datas, d);
+      pdfRodape(ctx);
+      ctx.doc.save(`Analise_Glicemia_Reinaldo_${hoje()}.pdf`);
+      toast('✅ PDF da análise gerado com sucesso!');
+    } catch (e) { toast('⚠️ Erro ao gerar PDF: ' + e.message, true); }
+  }, 100);
+}
+
+// ===== RELATÓRIO COMPLETO (análise + histórico) =====
+function gerarPDFCompleto() {
+  const d = dados();
+  const sel = document.getElementById('completo-periodo');
+  const periodo = parseInt(sel?.value ?? '30');
+  const todas = Object.keys(d).sort();
+  const datas = periodo > 0
+    ? todas.filter(dt => (new Date(hoje()) - new Date(dt + 'T12:00:00')) / 86400000 < periodo)
+    : todas;
+
+  if (datas.length === 0) { toast('⚠️ Nenhum dado no período para exportar!', true); return; }
+  toast('⏳ Gerando relatório completo...');
+
+  setTimeout(() => {
+    try {
+      const txtPeriodo = periodo > 0 ? `Ultimos ${periodo} dias` : 'Todos os dados';
+      const ctx = novoPDF();
+      pdfCabecalho(ctx, 'Relatorio Completo de Glicemia', `${txtPeriodo}  (${formatarData(datas[0])} a ${formatarData(datas[datas.length-1])})`);
+      pdfSecaoAnalise(ctx, datas, d);
+      pdfSecaoHistorico(ctx, datas, d);
+      pdfRodape(ctx);
+      ctx.doc.save(`Relatorio_Completo_Reinaldo_${hoje()}.pdf`);
+      toast('✅ Relatório completo gerado com sucesso!');
+    } catch (e) { toast('⚠️ Erro ao gerar relatório: ' + e.message, true); }
+  }, 100);
 }
 
 // INIT — sempre exige senha
