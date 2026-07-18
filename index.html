@@ -759,6 +759,9 @@
         <option value="0">Todos os dados</option>
       </select>
     </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn btn-azul btn-sm" onclick="gerarPDFAnalise()">📄 Exportar Análise em PDF</button>
+    </div>
   </div>
 
   <div class="card">
@@ -2297,6 +2300,169 @@ function gerarAnalise() {
   } else if (regEl) {
     regEl.innerHTML = '<p style="color:var(--cinza);font-size:0.85rem">São necessários ao menos 2 registros de jejum para calcular a regressão.</p>';
   }
+}
+
+// ===== PDF DA ANÁLISE =====
+
+function rotuloPeriodoAnalise() {
+  const sel = document.getElementById('analise-periodo');
+  const txt = sel?.options[sel.selectedIndex]?.text || '';
+  const datas = datasAnalise();
+  if (datas.length === 0) return txt;
+  return `${txt} (${formatarData(datas[0])} a ${formatarData(datas[datas.length-1])})`;
+}
+
+function gerarPDFAnalise() {
+  const datas = datasAnalise();
+  if (datas.length === 0) { toast('⚠️ Nenhum dado no período para exportar!', true); return; }
+
+  // Recria os gráficos SEM animação, para captura nítida e imediata
+  const animAntes = Chart.defaults.animation;
+  Chart.defaults.animation = false;
+  gerarAnalise();
+  Chart.defaults.animation = animAntes;
+
+  toast('⏳ Gerando PDF da análise...');
+  setTimeout(() => {
+    try {
+      montarPDFAnalise(datas);
+    } catch (e) {
+      toast('⚠️ Erro ao gerar PDF: ' + e.message, true);
+    }
+  }, 300);
+}
+
+function montarPDFAnalise(datas) {
+  const d = dados();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageW = 210, pageH = 297, margem = 15, usableW = pageW - margem * 2;
+  let y = margem;
+
+  // Cabeçalho
+  doc.setFillColor(26,111,190);
+  doc.rect(0, 0, pageW, 26, 'F');
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(16); doc.setFont(undefined, 'bold');
+  doc.text('Análise Detalhada de Glicemia', pageW/2, 12, { align: 'center' });
+  doc.setFontSize(10); doc.setFont(undefined, 'normal');
+  doc.text('Paciente: Reinaldo O. Rocha', pageW/2, 19, { align: 'center' });
+  y = 32;
+  doc.setTextColor(90,90,90); doc.setFontSize(9);
+  doc.text(`Período: ${rotuloPeriodoAnalise()}`, pageW/2, y, { align: 'center' });
+  y += 8;
+
+  // Resumo geral
+  const todasGlic = datas.flatMap(dt => {
+    const r = d[dt];
+    return [r.jejum_glicemia,r.pre_almoco_glicemia,r.pos_almoco_glicemia,r.pre_jantar_glicemia,r.pos_jantar_glicemia].filter(v => v != null);
+  });
+  const media = todasGlic.length ? Math.round(todasGlic.reduce((a,b)=>a+b,0)/todasGlic.length) : '—';
+  const max = todasGlic.length ? Math.max(...todasGlic) : '—';
+  const min = todasGlic.length ? Math.min(...todasGlic) : '—';
+  doc.setFillColor(232,242,251);
+  doc.roundedRect(margem, y, usableW, 12, 2, 2, 'F');
+  doc.setTextColor(26,111,190); doc.setFontSize(10); doc.setFont(undefined, 'bold');
+  doc.text(`Média: ${media} mg/dL   |   Máximo: ${max} mg/dL   |   Mínimo: ${min} mg/dL   |   Dias: ${datas.length}`, pageW/2, y + 7.5, { align: 'center' });
+  doc.setFont(undefined, 'normal');
+  y += 18;
+
+  // Função para adicionar um gráfico
+  const addGrafico = (chartId, titulo) => {
+    const chart = _charts[chartId];
+    if (!chart) return;
+    const img = chart.toBase64Image('image/png', 1);
+    const canvas = chart.canvas;
+    const ratio = canvas.height / canvas.width;
+    const imgW = usableW;
+    const imgH = imgW * ratio;
+
+    // Quebra de página se não couber (título + imagem)
+    if (y + imgH + 10 > pageH - margem) { doc.addPage(); y = margem; }
+
+    doc.setTextColor(26,111,190); doc.setFontSize(11); doc.setFont(undefined, 'bold');
+    doc.text(titulo, margem, y); y += 5;
+    doc.setFont(undefined, 'normal');
+    doc.addImage(img, 'PNG', margem, y, imgW, imgH);
+    y += imgH + 8;
+  };
+
+  addGrafico('evolucao', 'Evolução da Glicemia');
+  addGrafico('horarios', 'Média por Horário de Medição');
+  addGrafico('insulina', 'Insulina por Dia');
+
+  // Tabela estatística
+  const medicoes = [
+    { campo: 'jejum_glicemia',      label: 'Jejum',       alvoMax: 99  },
+    { campo: 'pre_almoco_glicemia', label: 'Pré-Almoço',  alvoMax: 130 },
+    { campo: 'pos_almoco_glicemia', label: '2h Almoço',   alvoMax: 180 },
+    { campo: 'pre_jantar_glicemia', label: 'Pré-Jantar',  alvoMax: 130 },
+    { campo: 'pos_jantar_glicemia', label: '2h Jantar',   alvoMax: 180 },
+  ];
+  const linhasStat = medicoes.map(m => {
+    const e = estatPorCampo(datas, m.campo, d);
+    if (!e) return [m.label, '—','—','—','—','—','—'];
+    const vals = datas.map(dt => d[dt][m.campo]).filter(v => v != null);
+    const noAlvo = vals.filter(v => v >= 70 && v <= m.alvoMax).length;
+    const pct = ((noAlvo / vals.length) * 100).toFixed(0) + '%';
+    return [m.label, e.med, e.dp, e.cv + '%', String(e.min), String(e.max), pct];
+  });
+
+  if (y + 40 > pageH - margem) { doc.addPage(); y = margem; }
+  doc.setTextColor(26,111,190); doc.setFontSize(11); doc.setFont(undefined, 'bold');
+  doc.text('Estatísticas Detalhadas', margem, y); y += 3;
+  doc.setFont(undefined, 'normal');
+
+  doc.autoTable({
+    startY: y + 2,
+    head: [['Medição','Média\n(mg/dL)','DP\n(mg/dL)','CV%','Mín','Máx','% Alvo']],
+    body: linhasStat,
+    theme: 'grid',
+    headStyles: { fillColor: [26,111,190], textColor: 255, fontSize: 8, halign: 'center' },
+    bodyStyles: { fontSize: 9, halign: 'center' },
+    columnStyles: { 0: { halign: 'left', fontStyle: 'bold' } },
+    margin: { left: margem, right: margem },
+  });
+  y = doc.lastAutoTable.finalY + 8;
+
+  // Regressão
+  const pontosJejum = datas.map((dt,i) => ({ x:i, y:d[dt].jejum_glicemia })).filter(p => p.y != null);
+  const reg = pontosJejum.length >= 2 ? regressaoLinear(pontosJejum) : null;
+
+  if (y + 45 > pageH - margem) { doc.addPage(); y = margem; }
+  doc.setTextColor(26,111,190); doc.setFontSize(11); doc.setFont(undefined, 'bold');
+  doc.text('Análise de Regressão Linear (Jejum)', margem, y); y += 4;
+  doc.setFont(undefined, 'normal');
+
+  addGrafico('regressao', '');
+
+  if (reg) {
+    const tendencia = reg.a > 0.5 ? 'Tendencia de ALTA' : reg.a < -0.5 ? 'Tendencia de QUEDA' : 'Glicemia ESTAVEL';
+    const ajuste = reg.r2 >= 0.7 ? 'ajuste forte' : reg.r2 >= 0.4 ? 'ajuste moderado' : 'ajuste fraco';
+    if (y + 32 > pageH - margem) { doc.addPage(); y = margem; }
+    doc.setFillColor(232,242,251);
+    doc.roundedRect(margem, y, usableW, 28, 2, 2, 'F');
+    doc.setTextColor(40,40,40); doc.setFontSize(9);
+    doc.text(`Equacao:  y = ${reg.a.toFixed(2)}x + ${reg.b.toFixed(1)} mg/dL`, margem + 4, y + 7);
+    doc.text(`R2 = ${reg.r2.toFixed(3)}  (${ajuste})`, margem + 4, y + 13);
+    doc.text(`Variacao diaria: ${Math.abs(reg.a).toFixed(2)} mg/dL/dia`, margem + 4, y + 19);
+    doc.setFont(undefined, 'bold'); doc.setTextColor(26,111,190);
+    doc.text(tendencia, margem + 4, y + 25);
+    doc.setFont(undefined, 'normal');
+    y += 34;
+  }
+
+  // Rodapé em todas as páginas
+  const totalPag = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= totalPag; p++) {
+    doc.setPage(p);
+    doc.setFontSize(7); doc.setTextColor(150,150,150);
+    doc.text('Normal (jejum): 70-99 mg/dL  |  Antes refeicoes: 80-130  |  2h apos: <180 mg/dL', pageW/2, pageH - 8, { align: 'center' });
+    doc.text(`Gerado em ${formatarData(hoje())}  -  Pagina ${p}/${totalPag}`, pageW/2, pageH - 4, { align: 'center' });
+  }
+
+  doc.save(`Analise_Glicemia_Reinaldo_${hoje()}.pdf`);
+  toast('✅ PDF da análise gerado com sucesso!');
 }
 
 // INIT — sempre exige senha
