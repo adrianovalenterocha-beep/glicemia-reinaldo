@@ -1617,7 +1617,7 @@ function gerarPDF() {
   doc.text('Normal (jejum): 70–99 mg/dL  |  Antes refeições: 80–130  |  2h após: <180 mg/dL', 148, doc.lastAutoTable.finalY + (obsComDados.length ? obsComDados.length*5+14 : 6), { align: 'center' });
   doc.text(`Gerado em: ${formatarData(hoje())}`, 148, doc.lastAutoTable.finalY + (obsComDados.length ? obsComDados.length*5+20 : 11), { align: 'center' });
 
-  doc.save(`Glicemia_Reinaldo_${chave}.pdf`);
+  doc.save(`Glicemia_Reinaldo_${inicio}_a_${fimStr}.pdf`);
 }
 
 // ===== EXCEL =====
