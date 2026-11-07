@@ -1,0 +1,6 @@
+
+# Sentinela VR: nunca versionar arquivos de ambiente
+.env
+.env.*
+!.env.example
+!.env.exemplo
